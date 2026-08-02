@@ -14,13 +14,8 @@ primary_region = "fra"
   auto_stop_machines = "suspend"
   auto_start_machines = true
   min_machines_running = 0
-
-  [[http_service.checks]]
-    grace_period = "10s"
-    interval = "60s"
-    method = "GET"
-    path = "/health"
-    timeout = "5s"
+  # no http checks on purpose: the proxy would poll /health every minute and
+  # the machine would never be idle long enough to suspend
 
 [mounts]
   source = "links_data"

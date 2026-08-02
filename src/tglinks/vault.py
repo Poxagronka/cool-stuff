@@ -17,9 +17,14 @@ def slug(text: str, limit: int = 60) -> str:
 
 
 def note_path(root: Path, entry: dict) -> Path:
+    """Named after the thing itself.
+
+    The date and the domain used to lead the name, and in a list of results
+    every line started with noise instead of what the link is. Both are still
+    properties, so nothing is lost.
+    """
     sent = entry["shared_at"]
-    day = sent[:10]
-    name = slug(f"{day} {entry['domain']} — {entry['title'] or entry['domain']}")
+    name = slug(entry["title"] or entry["domain"]) or "ссылка"
     return root / "links" / sent[:4] / f"{name}.md"
 
 
