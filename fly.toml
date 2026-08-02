@@ -1,0 +1,31 @@
+app = "tg-links-collector"
+primary_region = "fra"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  DB_PATH = "/data/links.db"
+  VAULT_PATH = "/data/vault"
+
+[http_service]
+  internal_port = 8443
+  force_https = true
+  auto_stop_machines = "suspend"
+  auto_start_machines = true
+  min_machines_running = 0
+
+  [[http_service.checks]]
+    grace_period = "10s"
+    interval = "60s"
+    method = "GET"
+    path = "/health"
+    timeout = "5s"
+
+[mounts]
+  source = "links_data"
+  destination = "/data"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"
