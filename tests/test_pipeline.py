@@ -117,6 +117,31 @@ def test_context_includes_reply_chain_and_neighbours(tmp_path):
     assert got == {1, 2, 3}
 
 
+def test_context_stops_at_the_next_link(tmp_path):
+    conn = db.connect(tmp_path / "t.db")
+    rows = [
+        {"chat_id": -1, "msg_id": 1, "sent_at": "2024-11-03T21:10:00", "author": "A",
+         "text": "https://valentinmarco.com крутится", "reply_to": None},
+        {"chat_id": -1, "msg_id": 2, "sent_at": "2024-11-03T21:11:00", "author": "A",
+         "text": "он у меня пару лет", "reply_to": None},
+        {"chat_id": -1, "msg_id": 3, "sent_at": "2024-11-03T21:12:00", "author": "A",
+         "text": "https://hoka.com/jacket", "reply_to": None},
+        {"chat_id": -1, "msg_id": 4, "sent_at": "2024-11-03T21:13:00", "author": "B",
+         "text": "красивая", "reply_to": None},
+        {"chat_id": -1, "msg_id": 5, "sent_at": "2024-11-03T21:14:00", "author": "B",
+         "text": "https://arcteryx.com ну или эта", "reply_to": None},
+        {"chat_id": -1, "msg_id": 6, "sent_at": "2024-11-03T21:15:00", "author": "A",
+         "text": "тоже вариант", "reply_to": None},
+    ]
+    for row in rows:
+        pipeline.store_message(conn, row)
+    conn.commit()
+
+    # the talk about valentinmarco and about arcteryx belongs to those links
+    got = {m["msg_id"] for m in pipeline.context_for(conn, -1, 3)}
+    assert got == {2, 3, 4}
+
+
 def test_render_note_has_frontmatter_and_chat_quotes(tmp_path):
     entry = {
         "url": "https://arcteryx.com/beta-lt",
@@ -147,7 +172,7 @@ def test_note_path_layout(tmp_path):
     entry = {"domain": "arcteryx.com", "title": "Beta LT", "shared_at": "2024-11-03T21:14:00"}
     path = vault.note_path(tmp_path, entry)
     assert path.parent == tmp_path / "links" / "2024"
-    assert path.name.startswith("2024-11-03 arcteryx.com")
+    assert path.name == "Beta LT.md"
 
 
 def test_note_filename_strips_illegal_chars(tmp_path):
@@ -189,3 +214,26 @@ def test_rewriting_the_same_link_keeps_its_path(tmp_path):
     entry = {"domain": "vm.tiktok.com", "title": "TikTok видео", "shared_at": "2024-05-11T10:00:00",
              "url": "https://vm.tiktok.com/ZMM72U7Dp", "category": "video", "tags": []}
     assert vault.write(tmp_path, entry, []) == vault.write(tmp_path, entry, [])
+
+
+def test_page_text_drops_the_furniture():
+    from tglinks import pagetext
+    html = """<html><body>
+      <nav>Главная Каталог Корзина</nav>
+      <header><button>Купить</button></header>
+      <main><h1>Куртка Beta LT</h1>
+        <p>Лёгкая мембранная куртка из Gore-Tex, рассчитана на дождь и ветер в горах.</p>
+        <p>Вес 340 грамм, три слоя, капюшон под каску, полностью проклеенные швы.</p>
+      </main>
+      <footer>Доставка Оплата Контакты</footer>
+      <script>var tracking = 1;</script></body></html>"""
+    text = pagetext.readable(html)
+    assert "мембранная куртка" in text
+    assert "tracking" not in text
+    assert "Корзина" not in text and "Доставка" not in text
+
+
+def test_page_text_is_capped():
+    from tglinks import pagetext
+    html = "<html><body><main>" + "<p>довольно длинное предложение про куртку</p>" * 500
+    assert len(pagetext.readable(html, limit=500)) <= 500

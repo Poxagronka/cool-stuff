@@ -6,10 +6,11 @@
 ## Устройство
 
 `src/tglinks/` — пайплайн: `canon` (канонизация url и дедуп) → `enrich`
-(лестница обогащения) → `categorize` (Anthropic) → `vault` (заметки) →
-`gitvault` (push). `app.py` — webhook, `scripts/backfill.py` — разовая
-выгрузка. Подробности в `research/` и `PLAN.md`, состояние среды — в
-`SETUP.md`.
+(лестница обогащения, `sites` — точечные резолверы, `pagetext` — чистый текст
+страницы) → `categorize` (Anthropic) → `vault` (заметки) → `gitvault` (push).
+`app.py` — webhook и публичный портал (`portal` — индекс, `web` — страница,
+`ask` — поиск словами через Haiku). `scripts/backfill.py` — разовая выгрузка.
+Подробности в `research/` и `PLAN.md`, состояние среды — в `SETUP.md`.
 
 ## Тропинки, на которые уже наступили
 
@@ -24,8 +25,17 @@
   [knowledge/scraping/rules.md](knowledge/scraping/rules.md) R1
 - Выгрузку гонять с ноутбука, не с сервера: датацентровому IP магазины отдают
   меньше → там же R4
+- `accept-encoding: br` без распаковщика ломает всё: сервер отдаёт сжатое,
+  httpx не распакует, метаданные пустые → там же R7
+- Instagram/TikTok/Spotify/App Store читаются только через свои эндпоинты,
+  Pinterest не читается вообще → там же R8
+- Контекст обрывается на соседней ссылке, иначе описание уедет не к той вещи →
+  [knowledge/telegram/rules.md](knowledge/telegram/rules.md) R8
 - Корневая ФС машины Fly эфемерна, состояние только на томе →
   [knowledge/deployment/rules.md](knowledge/deployment/rules.md) R1
+- Health-check у Fly не даёт машине заснуть, поэтому их нет → там же R5
+- Модель в поиске портала не пишет ответ, только вызывает `search` →
+  [knowledge/portal/rules.md](knowledge/portal/rules.md) R1
 
 ## Локально
 

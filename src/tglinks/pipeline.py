@@ -1,6 +1,7 @@
 """Ties the stages together: dedup, enrich, categorise, write a note."""
 
 import json
+import re
 import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
@@ -8,6 +9,7 @@ from pathlib import Path
 from . import canon, categorize, enrich, vault
 
 CONTEXT_WINDOW = timedelta(minutes=5)
+HAS_URL = re.compile(r"(https?://|www\.)\S+", re.I)
 
 
 def store_message(conn: sqlite3.Connection, msg: dict) -> None:
@@ -89,12 +91,23 @@ def context_for(conn: sqlite3.Connection, chat_id: int, msg_id: int) -> list[dic
     if sent:
         lo = (sent - CONTEXT_WINDOW).isoformat()
         hi = (sent + CONTEXT_WINDOW).isoformat()
-        for row in conn.execute(
+        stream = list(conn.execute(
             "SELECT * FROM message WHERE chat_id = ? AND sent_at BETWEEN ? AND ?"
             " ORDER BY sent_at LIMIT 30",
             (chat_id, lo, hi),
-        ):
-            picked.setdefault(row["msg_id"], row)
+        ))
+        here = next(
+            (i for i, r in enumerate(stream) if r["msg_id"] == anchor["msg_id"]), None
+        )
+        if here is not None:
+            # another link nearby starts its own conversation: everything past
+            # it belongs to that link, not to this one. taking the whole window
+            # made comments about the neighbour read as comments about this url
+            for side in (reversed(stream[:here]), stream[here + 1:]):
+                for row in side:
+                    if HAS_URL.search(row["text"] or ""):
+                        break
+                    picked.setdefault(row["msg_id"], row)
 
     return [dict(r) for r in sorted(picked.values(), key=lambda r: r["sent_at"])]
 
@@ -122,6 +135,13 @@ async def process_entry(conn: sqlite3.Connection, cluster_id: int, vault_root: P
     resolved = enrich.final_url(entry["url"], meta)
     dead = not meta.ok() and (meta.http_status >= 400 or meta.http_status == 0)
 
+    # a title and no description says nothing about what the link is. going
+    # after the page text costs one extra fetch and turns a generic app-store
+    # placeholder into an actual description
+    page = (meta.fields or {}).get("page_text", "")
+    if not page and not dead and len(meta.description) < 60:
+        page = await enrich.body_text(resolved)
+
     context = context_for(conn, link["chat_id"], link["msg_id"])
     result = await categorize.classify(
         resolved,
@@ -130,6 +150,7 @@ async def process_entry(conn: sqlite3.Connection, cluster_id: int, vault_root: P
             "title": meta.title,
             "description": meta.description,
             "site_name": meta.site_name,
+            "page_text": page,
         },
         context,
     )

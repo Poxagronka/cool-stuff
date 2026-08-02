@@ -19,7 +19,7 @@ from urllib.parse import quote, urlsplit
 import httpx
 from selectolax.parser import HTMLParser
 
-from . import canon
+from . import canon, pagetext, sites
 from .config import HTTP_TIMEOUT
 
 CHROME_HEADERS = {
@@ -29,7 +29,10 @@ CHROME_HEADERS = {
     ),
     "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,*/*;q=0.8",
     "accept-language": "en-US,en;q=0.9,ru;q=0.8",
-    "accept-encoding": "gzip, deflate, br",
+    # no br or zstd: httpx cannot decompress either without extra packages,
+    # and the server takes us at our word — the body comes back as binary mush
+    # that parses into empty metadata
+    "accept-encoding": "gzip, deflate",
     "sec-ch-ua": '"Chromium";v="146", "Google Chrome";v="146", "Not?A_Brand";v="24"',
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": '"macOS"',
@@ -165,6 +168,24 @@ async def tier_oembed(client: httpx.AsyncClient, url: str) -> Meta | None:
     )
 
 
+async def tier_site(client: httpx.AsyncClient, url: str) -> Meta | None:
+    """Sites with a known public endpoint, resolved before the generic ladder."""
+    found = await sites.probe(client, url)
+    if not found:
+        return None
+    return Meta(
+        url=url,
+        title=found.get("title", ""),
+        description=found.get("description", ""),
+        image=found.get("image", ""),
+        site_name=found.get("site_name", ""),
+        price=found.get("price", ""),
+        tier="site",
+        http_status=200,
+        fields={"page_text": found.get("text", "")},
+    )
+
+
 async def tier_chrome(client: httpx.AsyncClient, url: str) -> Meta | None:
     try:
         status, html = await _fetch_head(client, url, CHROME_HEADERS)
@@ -232,6 +253,10 @@ async def enrich(url: str, preview: dict | None = None) -> Meta:
     ) as client:
         best = Meta(url=url)
 
+        meta = await tier_site(client, url)
+        if meta and meta.ok():
+            return meta
+
         meta = await tier_oembed(client, url)
         if meta and meta.ok():
             return meta
@@ -251,6 +276,45 @@ async def enrich(url: str, preview: dict | None = None) -> Meta:
     if meta and meta.ok():
         return meta
     return best
+
+
+async def body_text(url: str) -> str:
+    """Readable text of the page, for links whose metadata says nothing.
+
+    Deliberately outside the ladder: the ladder stops at </head>, this asks
+    for the whole document, so it only runs when the head turned out empty.
+    """
+    raw = ""
+    try:
+        from curl_cffi.requests import AsyncSession
+
+        async with AsyncSession() as session:
+            resp = await session.get(
+                url, impersonate="chrome", timeout=HTTP_TIMEOUT, allow_redirects=True
+            )
+        if resp.status_code < 400:
+            raw = resp.text
+    except Exception:
+        raw = ""
+
+    if not raw:
+        try:
+            async with httpx.AsyncClient(
+                follow_redirects=True, timeout=HTTP_TIMEOUT
+            ) as client:
+                resp = await client.get(url, headers=CHROME_HEADERS)
+            if resp.status_code < 400:
+                raw = resp.text
+        except httpx.HTTPError:
+            return ""
+
+    if not raw or BLOCKED_MARKERS.search(raw[:4000]):
+        return ""
+    # a link straight to a jpeg decodes into replacement characters, and those
+    # would go to the model as if they were text
+    if raw[:2000].count("�") > 20 or "<" not in raw[:2000]:
+        return ""
+    return pagetext.extract(raw)
 
 
 def final_url(url: str, meta: Meta) -> str:
