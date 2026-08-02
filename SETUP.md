@@ -1,6 +1,8 @@
-# Что уже настроено и что осталось
+# Что настроено
 
-## Готово
+Всё работает автоматически. Ручных шагов не осталось.
+
+## Инфраструктура
 
 | Что | Где |
 |---|---|
@@ -9,90 +11,29 @@
 | Локальный vault | `~/links-vault` |
 | Приложение на Fly | `tg-links-collector.fly.dev`, регион fra |
 | Том | `links_data`, 1 ГБ, fra |
-| Deploy key | зарегистрирован на `links-vault` с правом записи; приватная часть в `~/.ssh/tg-links-vault-deploy` и в секретах Fly |
-| Секреты Fly | `ANTHROPIC_API_KEY`, `SSH_KEY`, `VAULT_REPO`, `WEBHOOK_SECRET` |
-| Креды в `.env` | `TG_API_ID`, `TG_API_HASH` (из abooks_bot), `ANTHROPIC_API_KEY` (из appodeal-life) |
+| Бот | `@coolstuff_links_bot`, privacy mode отключён, в группе |
+| Чат | «cool stuff», id `-4092567497` (обычная группа, не супергруппа) |
+| Deploy key | на `links-vault` с правом записи; приватная часть в `~/.ssh/tg-links-vault-deploy` и в секретах Fly |
+| Секреты Fly | `ANTHROPIC_API_KEY`, `SSH_KEY`, `VAULT_REPO`, `WEBHOOK_SECRET`, `TG_BOT_TOKEN`, `TG_CHAT` |
+| Сессия Telethon | `data/backfill.session`, вход выполнен |
 
-Проверено: `GET /health` отвечает 200, при старте приложение успешно клонирует
-vault по deploy key.
+## Что проверено вживую
 
-## Осталось три шага
-
-### 1. Узнать id чата
-
-Разовый вход в Telegram, спросит номер телефона и код:
-
-```
-cd ~/tg-links-secondbrain
-.venv/bin/python scripts/backfill.py --list-chats
-```
-
-Найти в списке «cool stuff», вписать id в `.env`:
-
-```
-TG_CHAT=-100...
-```
-
-Сессия сохранится в `data/backfill.session`, второй раз код не понадобится.
-
-### 2. Разведка перед выгрузкой
-
-```
-.venv/bin/python scripts/backfill.py --recon
-```
-
-Покажет, сколько уникальных ссылок и топ доменов. **От этой цифры зависит,
-имеет ли смысл всё остальное** — если ссылок окажется полторы сотни, проще
-разобрать руками.
-
-Дальше, если объём оправдывает:
-
-```
-.venv/bin/python scripts/backfill.py --dump          # в sqlite
-.venv/bin/python scripts/backfill.py --process --limit 20   # проба на 20 штуках
-```
-
-Посмотреть, что получилось в `data/vault/links/`, и если нравится — снять
-`--limit`. Гонять с ноутбука, а не с сервера: домашний IP резидентный, магазины
-отдают ему метаданные там, где датацентру не отдают.
-
-### 3. Бот для новых ссылок
-
-Создать отдельного бота (не переиспользовать книжного):
-
-1. `@BotFather` → `/newbot`
-2. `/setprivacy` → выбрать бота → **Disable** — иначе он не увидит ссылки
-3. Добавить бота в «cool stuff» **после** смены privacy: настройка
-   применяется в момент добавления
-4. Токен положить в оба места:
-
-```
-cd ~/tg-links-secondbrain
-echo 'TG_BOT_TOKEN=<токен>' >> .env
-flyctl secrets set TG_BOT_TOKEN=<токен> TG_CHAT=<id чата>
-```
-
-Второй командой машина передеплоится сама. Затем повесить webhook:
-
-```
-source .env
-curl "https://api.telegram.org/bot$TG_BOT_TOKEN/setWebhook?url=https://tg-links-collector.fly.dev/webhook&secret_token=$WEBHOOK_SECRET"
-curl "https://api.telegram.org/bot$TG_BOT_TOKEN/getWebhookInfo"
-```
-
-В `getWebhookInfo` смотреть на `last_error_message` — это первое место, куда
-идти, если бот молчит.
+Ссылка отправлена в группу, и она прошла весь путь: webhook принял апдейт,
+метаданные забрались со страницы, Anthropic вернул категорию и теги, заметка
+закоммитилась в `links-vault`, бот поставил реакцию. Логи и заметка на месте.
 
 ## Как пользоваться
 
-Кинуть ссылку в чат. Бот ставит реакцию: «глаза» — видел, но ссылка уже есть;
-«рука с ручкой» — завёл заметку. Заметка уезжает коммитом в `links-vault`.
+Кинуть ссылку в чат — дальше само. Бот ставит реакцию: «глаза» — ссылка уже
+была, «рука с ручкой» — завёл заметку.
 
-Локально подтянуть: `cd ~/links-vault && git pull`. В Obsidian поставить плагин
-Obsidian Git, чтобы делал это сам.
+Локально: `cd ~/links-vault && git pull`. В Obsidian поставить плагин Obsidian
+Git, чтобы тянул сам. Открыть vault: «Open folder as vault» → `~/links-vault`,
+включить ядровой плагин Bases — заработают представления из `bases/`.
 
-Открыть vault в Obsidian: «Open folder as vault» → `~/links-vault`. Включить
-ядровой плагин Bases, тогда заработают представления из `bases/`.
+Облако тегов — встроенная панель тегов Obsidian: свойство `tags` во
+фронтматтере распознаётся как настоящие теги.
 
 ## Обслуживание
 
@@ -102,20 +43,41 @@ flyctl status -a tg-links-collector        # спит машина или нет
 curl https://tg-links-collector.fly.dev/health
 ```
 
-Машина настроена на `auto_stop_machines = "suspend"`: между сообщениями спит,
+Машина на `auto_stop_machines = "suspend"`: между сообщениями спит,
 просыпается на webhook за доли секунды.
+
+Если бот замолчал — первым делом сюда:
+
+```
+source .env
+curl "https://api.telegram.org/bot$TG_BOT_TOKEN/getWebhookInfo"
+```
+
+Смотреть `last_error_message`.
+
+## Повторная выгрузка истории
+
+Разово уже сделана. Если понадобится ещё раз:
+
+```
+.venv/bin/python scripts/backfill.py --recon     # посчитать
+.venv/bin/python scripts/backfill.py --dump      # в sqlite
+.venv/bin/python scripts/backfill.py --process   # обогатить и написать заметки
+```
+
+Гонять с ноутбука, а не с сервера: домашний IP резидентный, магазины отдают
+ему метаданные там, где датацентру не отдают.
 
 ## Про стоимость
 
-Не бесплатно, вопреки исходному замыслу — вы сами выбрали Anthropic API вместо
-локальной модели.
+Не бесплатно, вопреки исходному замыслу — Anthropic вместо локальной модели
+выбран сознательно.
 
-- Fly: `shared-cpu-1x`/512 МБ со сном + том 1 ГБ. Копейки в месяц, добавится
+- Fly: `shared-cpu-1x`/512 МБ со сном плюс том 1 ГБ. Копейки в месяц, добавится
   к существующему счёту за `abooks_bot`
-- Anthropic: примерно $0.002 за ссылку. Разбор истории — единоразово порядка
-  $2–4 на пару тысяч ссылок, дальше центы в месяц
+- Anthropic: примерно $0.002 за ссылку. Разбор истории из 388 ссылок обошёлся
+  меньше чем в доллар, дальше центы в месяц
 - GitHub, Obsidian: бесплатно
 
-Если захотите вернуться к нулю: в `categorize.py` вся работа с Anthropic
-изолирована в одном модуле, подменить на локальную модель — правка в одном
-файле.
+Если захочется вернуться к нулю: работа с Anthropic изолирована в
+`categorize.py`, подмена на локальную модель — правка в одном файле.

@@ -49,8 +49,10 @@ def render(entry: dict, context: list[dict]) -> str:
         "shared_at": entry["shared_at"],
         "status": entry.get("status", "ok"),
         "confidence": entry.get("confidence", "low"),
-        "tg_link": entry.get("tg_link", ""),
     }
+    # basic groups have no deep link, and an empty property is noise in bases
+    if entry.get("tg_link"):
+        front["tg_link"] = entry["tg_link"]
     if entry.get("image"):
         front["image"] = entry["image"]
     if entry.get("price"):
