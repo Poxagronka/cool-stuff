@@ -11,6 +11,9 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src/ ./src/
+# the operational scripts ship too: minting the first invite on a fresh machine
+# happens over ssh, and there is nothing else on the box that can do it
+COPY scripts/ ./scripts/
 
 ENV PYTHONPATH=/app/src \
     PYTHONUNBUFFERED=1 \

@@ -37,20 +37,20 @@ async def request_code(phone: str) -> int:
     await client.connect()
     if await client.is_user_authorized():
         me = await client.get_me()
-        print(f"Уже авторизован как {me.first_name} (@{me.username}). Ничего не нужно.")
+        print(f"Already signed in as {me.first_name} (@{me.username}). Nothing to do.")
         await client.disconnect()
         return 0
     sent = await client.send_code_request(phone)
     STATE.write_text(json.dumps({"phone": phone, "hash": sent.phone_code_hash}))
     await client.disconnect()
-    print(f"Код отправлен на {phone}. Он придёт в Telegram, не по SMS.")
-    print("Дальше: python scripts/login.py --code <код>")
+    print(f"Code sent to {phone}. It arrives in Telegram, not by SMS.")
+    print("Next: python scripts/login.py --code <code>")
     return 0
 
 
 async def sign_in(code: str, password: str | None) -> int:
     if not STATE.exists():
-        print("Нет сохранённого запроса. Сначала --phone", file=sys.stderr)
+        print("No saved request. Run --phone first", file=sys.stderr)
         return 1
     state = json.loads(STATE.read_text())
 
@@ -61,31 +61,31 @@ async def sign_in(code: str, password: str | None) -> int:
     except SessionPasswordNeededError:
         # prompt with getpass so the password stays out of the shell history
         if not password and sys.stdin.isatty():
-            password = getpass.getpass("Облачный пароль (ввод не виден): ")
+            password = getpass.getpass("Cloud password (input is hidden): ")
         if not password:
-            print("Включена двухфакторка, нужен облачный пароль.", file=sys.stderr)
+            print("Two-factor is on, the cloud password is needed.", file=sys.stderr)
             await client.disconnect()
             return 2
         try:
             await client.sign_in(password=password)
         except PasswordHashInvalidError:
-            print("Пароль неверный. Код ещё живой, запусти ту же команду снова.",
+            print("Wrong password. The code is still alive, run the same command again.",
                   file=sys.stderr)
             await client.disconnect()
             return 1
     except PhoneCodeInvalidError:
-        print("Код неверный.", file=sys.stderr)
+        print("Wrong code.", file=sys.stderr)
         await client.disconnect()
         return 1
     except PhoneCodeExpiredError:
-        print("Код протух, запроси заново через --phone", file=sys.stderr)
+        print("The code expired, ask for a new one with --phone", file=sys.stderr)
         await client.disconnect()
         return 1
 
     me = await client.get_me()
     await client.disconnect()
     STATE.unlink(missing_ok=True)
-    print(f"Готово, вошли как {me.first_name} (@{me.username}).")
+    print(f"Done, signed in as {me.first_name} (@{me.username}).")
     return 0
 
 
@@ -97,7 +97,7 @@ async def main() -> int:
     args = ap.parse_args()
 
     if not TG_API_ID or not TG_API_HASH:
-        print("TG_API_ID / TG_API_HASH не заданы", file=sys.stderr)
+        print("TG_API_ID / TG_API_HASH are not set", file=sys.stderr)
         return 1
     Path(SESSION).parent.mkdir(parents=True, exist_ok=True)
 
@@ -105,7 +105,7 @@ async def main() -> int:
         return await request_code(args.phone)
     if args.code:
         return await sign_in(args.code, args.password)
-    ap.error("нужен --phone или --code")
+    ap.error("need --phone or --code")
     return 1
 
 

@@ -6,6 +6,11 @@ files is nothing — and reparsed when the collector writes a new one.
 
 Notes carry the chat quotes around each link, and those go out with the rest:
 the chat is a place people recommend things, the context is half the value.
+
+Matching itself lives in `textsearch`: words folded to latin, resolved through
+prefix and near-spelling, and weighted by how rare they are. What this module
+adds on top is where the word was found — a brand in the title means the note
+is about it, the same brand in someone's aside means it is not.
 """
 
 import re
@@ -13,6 +18,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 
 import yaml
+
+from .textsearch import Terms, tokens
 
 FRONT = re.compile(r"^---\n(.*?)\n---", re.S)
 QUOTE_HEAD = re.compile(r"^>\s*\*\*(.+?)\*\*,\s*(\S*)\s*$")
@@ -29,9 +36,12 @@ class Item:
     image: str = ""
     shared_by: str = ""
     shared_at: str = ""
+    source: str = "chat"
     status: str = "ok"
     quotes: list[dict] = field(default_factory=list)
-    haystack: str = ""
+    # every word of the note, each flagged with whether it says what the thing
+    # is (title, domain, tags, keywords) or merely stands near it
+    words: dict[str, bool] = field(default_factory=dict)
 
     def public(self) -> dict:
         return {
@@ -43,6 +53,7 @@ class Item:
             "tags": self.tags,
             "image": self.image,
             "by": self.shared_by,
+            "saved": self.source == "saved",
             "date": self.shared_at[:10],
             "dead": self.status == "dead",
             "quotes": self.quotes,
@@ -50,8 +61,13 @@ class Item:
 
 
 def quotes_of(text: str) -> list[dict]:
-    """The chat fragment saved under the "Из чата" heading, if there is one."""
-    _, _, tail = text.partition("\n## Из чата\n")
+    """The chat fragment saved under the quotes heading, if there is one."""
+    for heading in ("\n## From the chat\n", "\n## Saved to myself\n", "\n## Из чата\n"):
+        _, _, tail = text.partition(heading)
+        if tail:
+            break
+    else:
+        return []
     if not tail:
         return []
     found: list[dict] = []
@@ -88,6 +104,9 @@ def parse(path: Path) -> Item | None:
     tags = data.get("tags") or []
     if isinstance(tags, str):
         tags = [tags]
+    keywords = data.get("keywords") or []
+    if isinstance(keywords, str):
+        keywords = [keywords]
     item = Item(
         url=str(data["url"]),
         title=str(data.get("title") or ""),
@@ -97,14 +116,21 @@ def parse(path: Path) -> Item | None:
         tags=[str(t) for t in tags],
         image=str(data.get("image") or ""),
         shared_by=str(data.get("shared_by") or ""),
+        source=str(data.get("source") or "chat"),
         shared_at=str(data.get("shared_at") or ""),
         status=str(data.get("status") or "ok"),
         quotes=quotes_of(text),
     )
-    item.haystack = " ".join(
-        [item.title, item.description, item.domain, item.url, item.shared_by,
-         *item.tags, *(q["text"] for q in item.quotes)]
-    ).lower()
+    # the weak half first, then the strong half over the top of it: a word in
+    # both ends up strong, which is what someone typing it would expect
+    for word in tokens(" ".join(
+        [item.description, item.url, item.shared_by, *(q["text"] for q in item.quotes)]
+    )):
+        item.words.setdefault(word, False)
+    for word in tokens(" ".join(
+        [item.title, item.domain, *item.tags, *[str(k) for k in keywords]]
+    )):
+        item.words[word] = True
     return item
 
 
@@ -114,6 +140,7 @@ class Index:
     def __init__(self, root: Path) -> None:
         self.root = root
         self.items: list[Item] = []
+        self.terms = Terms()
 
     def load(self) -> int:
         found = []
@@ -123,6 +150,11 @@ class Index:
                 found.append(item)
         found.sort(key=lambda i: i.shared_at, reverse=True)
         self.items = found
+        terms = Terms()
+        for item in found:
+            terms.add(set(item.words))
+        terms.finish()
+        self.terms = terms
         return len(found)
 
     def categories(self) -> list[tuple[str, int]]:
@@ -139,37 +171,103 @@ class Index:
         ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
         return ranked[:limit]
 
-    def search(self, query: str, category: str = "", tag: str = "", offset: int = 0,
-               limit: int = 60, mode: str = "all") -> tuple[list[Item], int]:
-        """Typed queries want every word; questions want the best match.
+    def related(self, items: list[Item], chosen: list[str],
+                limit: int = 40) -> list[tuple[str, int]]:
+        """Tags that keep company with the ones already picked.
 
-        A person typing into the box means all of it ("nike куртка"). A
+        This is what makes the cloud walkable: pick "shoes" and the tags of
+        everything tagged shoes come up — hoka, nike, running — so the next
+        click narrows by something that actually exists in the results.
+        """
+        counts: dict[str, int] = {}
+        for item in items:
+            for tag in item.tags:
+                if tag not in chosen:
+                    counts[tag] = counts.get(tag, 0) + 1
+        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        return ranked[:limit]
+
+    def graph(self, items: list[Item], chosen: list[str],
+              limit: int = 60) -> dict:
+        """The same tags as a web: who is there, and who hangs next to whom.
+
+        `related` answers "what could I pick next" as a flat list, which is all
+        a cloud needs. A graph also needs the lines between them, and those are
+        just the pairs that turn up on the same note. Tags already picked stay
+        in the web — dropping them would cut the path you walked in on.
+        """
+        counts: dict[str, int] = {}
+        for item in items:
+            for tag in item.tags:
+                counts[tag] = counts.get(tag, 0) + 1
+        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        # a picked tag can sit outside the top slice once the results narrow,
+        # and a web missing the node you are standing on reads as a bug
+        keep = dict(ranked[:limit])
+        for tag in chosen:
+            if tag in counts:
+                keep[tag] = counts[tag]
+
+        pairs: dict[tuple[str, str], int] = {}
+        for item in items:
+            here = sorted(t for t in set(item.tags) if t in keep)
+            for i, one in enumerate(here):
+                for other in here[i + 1:]:
+                    pairs[(one, other)] = pairs.get((one, other), 0) + 1
+        edges = sorted(pairs.items(), key=lambda kv: (-kv[1], kv[0]))
+
+        nodes = sorted(keep.items(), key=lambda kv: (-kv[1], kv[0]))
+        return {
+            "nodes": [{"tag": t, "count": n} for t, n in nodes],
+            "edges": [[a, b, n] for (a, b), n in edges],
+            "picked": [t for t in chosen if t in keep],
+        }
+
+    def find(self, query: str, category: str = "", tags: list[str] | None = None,
+             mode: str = "all") -> list[Item]:
+        """Everything that matches, in order. The caller slices it.
+
+        A person typing into the box means all of it ("nike jacket"). A
         question turned into keywords by the model is a guess at synonyms, and
         demanding all of them finds nothing — there ranking wins.
         """
-        words = [w for w in query.lower().split() if w]
-        hits = self._match(words, category, tag, mode)
-        if words and not hits:
-            # russian endings: "куртка" should still find "куртки". retried
-            # only when the exact words found nothing, so precision comes first
-            stems = [w[:-2] if len(w) > 5 else w for w in words]
-            if stems != words:
-                hits = self._match(stems, category, tag, mode)
+        return self._match(tokens(query), category, list(tags or []), mode)
+
+    def search(self, query: str, category: str = "", tags: list[str] | None = None,
+               offset: int = 0, limit: int = 60,
+               mode: str = "all") -> tuple[list[Item], int]:
+        hits = self.find(query, category, tags, mode)
         return hits[offset:offset + limit], len(hits)
 
-    def _match(self, words: list[str], category: str, tag: str,
+    def _match(self, words: list[str], category: str, tags: list[str],
                mode: str = "all") -> list[Item]:
+        # what each typed word could mean, worked out once against the whole
+        # vocabulary rather than once per note
+        plan = [self.terms.expand(w) for w in words]
         scored = []
         for item in self.items:
             if category and item.category != category:
                 continue
-            if tag and tag not in item.tags:
+            if any(t not in item.tags for t in tags):
                 continue
-            score = sum(1 for w in words if w in item.haystack)
-            if words and (score == 0 if mode == "any" else score < len(words)):
+            score, matched = 0.0, 0
+            for options in plan:
+                best = 0.0
+                for term, quality in options:
+                    strong = item.words.get(term)
+                    if strong is None:
+                        continue
+                    # a word in the title or the tags is worth three of the
+                    # same word in a passing remark, and a word only two notes
+                    # carry is worth more than one half the vault carries
+                    best = max(best, self.terms.idf(term) * quality * (3.0 if strong else 1.0))
+                if best:
+                    matched += 1
+                    score += best
+            if words and (not matched if mode == "any" else matched < len(words)):
                 continue
             scored.append((score, item))
-        if mode == "any" and words:
+        if words:
             # stable sort keeps the newest first inside one score
             scored.sort(key=lambda p: -p[0])
         return [item for _, item in scored]

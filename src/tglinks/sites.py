@@ -37,7 +37,7 @@ async def appstore(client: httpx.AsyncClient, url: str, host: str) -> dict | Non
     if not results:
         return None
     app = results[0]
-    kind = "Игра" if app.get("primaryGenreName") == "Games" else "Приложение"
+    kind = "Game" if app.get("primaryGenreName") == "Games" else "App"
     return {
         "title": app.get("trackName", ""),
         "description": (app.get("description") or "")[:600],
@@ -45,7 +45,7 @@ async def appstore(client: httpx.AsyncClient, url: str, host: str) -> dict | Non
         "site_name": "App Store",
         "price": str(app.get("formattedPrice") or ""),
         "text": f"{kind}, {app.get('primaryGenreName', '')}, "
-                f"разработчик {app.get('artistName', '')}",
+                f"by {app.get('artistName', '')}",
     }
 
 
@@ -70,7 +70,7 @@ async def tiktok(client: httpx.AsyncClient, url: str, host: str) -> dict | None:
         "description": caption,
         "image": data.get("thumbnail_url", ""),
         "site_name": "TikTok",
-        "text": f"Видео в TikTok от {author}. Подпись: {caption}",
+        "text": f"A TikTok video by {author}. Caption: {caption}",
     }
 
 
@@ -86,9 +86,9 @@ async def instagram(client: httpx.AsyncClient, url: str, host: str) -> dict | No
             return None
         return {
             "title": f"Instagram @{handle}",
-            "description": f"Аккаунт @{handle} в Instagram.",
+            "description": f"The Instagram account @{handle}.",
             "site_name": "Instagram",
-            "text": f"Профиль @{handle} в Instagram",
+            "text": f"The Instagram profile @{handle}",
         }
 
     resp = await client.get(
@@ -108,9 +108,9 @@ async def instagram(client: httpx.AsyncClient, url: str, host: str) -> dict | No
         return None
     return {
         "title": (body[:80] or f"Instagram @{handle}"),
-        "description": body[:400] or f"Пост аккаунта @{handle}.",
+        "description": body[:400] or f"A post by @{handle}.",
         "site_name": "Instagram",
-        "text": f"Пост в Instagram от @{handle}. Подпись: {body}",
+        "text": f"An Instagram post by @{handle}. Caption: {body}",
     }
 
 
@@ -143,8 +143,8 @@ async def direct_image(client: httpx.AsyncClient, url: str, host: str) -> dict |
     if not re.search(r"\.(jpe?g|png|gif|webp|avif)$", urlsplit(url).path, re.I):
         return None
     return {
-        "title": f"Картинка с {host}",
-        "description": "Картинка без страницы вокруг неё.",
+        "title": f"An image from {host}",
+        "description": "An image with no page around it.",
         "image": url,
         "site_name": host,
         "text": "",

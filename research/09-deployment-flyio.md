@@ -1,34 +1,34 @@
-# Непрерывный сбор: маленькая апка на Fly.io
+# Continuous collection: a small app on Fly.io
 
-Вместо n8n. Один Python-сервис, один контейнер, один том.
+Instead of n8n. One Python service, one container, one volume.
 
-## Что уже есть у вас
+## What you already have
 
-В `/Users/poxagronka/abooks_bot` лежит **рабочий телеграм-бот на Fly.io в
-webhook-режиме** — готовый шаблон, который можно копировать целиком.
+`/Users/poxagronka/abooks_bot` holds **a working Telegram bot on Fly.io in
+webhook mode** — a ready template you can copy wholesale.
 
-### Креды Telegram — уже есть, регистрировать ничего не надо
+### Telegram credentials — already there, nothing to register
 
-`abooks_bot/.env` (файл в `.gitignore`, значения ниже замаскированы):
+`abooks_bot/.env` (the file is in `.gitignore`, the values below are masked):
 
 ```
-TG_API_ID=322694••••••      <- MTProto, ЭТО НУЖНО для Telethon-бэкфилла
-TG_API_HASH=07ef4d••••••    <- MTProto, ЭТО НУЖНО для Telethon-бэкфилла
-TG_BOT_TOKEN=866944••••••   <- бот @shoggoth-book-bot
+TG_API_ID=322694••••••      <- MTProto, THIS IS WHAT the Telethon backfill needs
+TG_API_HASH=07ef4d••••••    <- MTProto, THIS IS WHAT the Telethon backfill needs
+TG_BOT_TOKEN=866944••••••   <- the @shoggoth-book-bot bot
 TG_BOT_USERNAME=shoggo••••••
 ```
 
-`api_id` / `api_hash` выданы на **аккаунт**, а не на приложение — их можно
-переиспользовать для второго проекта без ограничений. Шаг «зарегистрироваться
-на my.telegram.org» из плана вычёркивается.
+`api_id` / `api_hash` are issued per **account**, not per application — you can
+reuse them for a second project with no limits. The "register on my.telegram.org"
+step drops out of the plan.
 
-`TG_BOT_TOKEN` переиспользовать **не стоит**: один бот = один webhook URL.
-Если тот же токен привязать к новому серверу, книжный бот отвалится. Завести
-отдельного бота у BotFather (30 секунд) и положить его токен в секреты Fly.
+Reusing `TG_BOT_TOKEN` is **a bad idea**: one bot = one webhook URL. Point the
+same token at a new server and the books bot goes down. Create a separate bot in
+BotFather (30 seconds) and put its token into Fly secrets.
 
-### fly.toml как шаблон
+### fly.toml as a template
 
-Из `abooks_bot/fly.toml`, релевантная часть:
+From `abooks_bot/fly.toml`, the relevant part:
 
 ```toml
 app = "shoggoth-book-bot"
@@ -55,10 +55,10 @@ primary_region = "fra"
   memory = "16384"
 ```
 
-`performance-8x` / 16 ГБ — под перекодирование аудиокниг. Сборщику ссылок
-столько не нужно на два порядка.
+`performance-8x` / 16 GB is for transcoding audiobooks. A link collector needs
+two orders of magnitude less.
 
-## fly.toml для сборщика ссылок
+## fly.toml for the link collector
 
 ```toml
 app = "tg-links-collector"
@@ -89,124 +89,127 @@ primary_region = "fra"
   memory = "512"
 ```
 
-Секреты (в репозиторий не кладутся):
+Secrets (not committed to the repo):
 
 ```bash
 fly secrets set TG_BOT_TOKEN=... ANTHROPIC_API_KEY=... GITHUB_TOKEN=...
 ```
 
-### Про масштаб и деньги
+### On scale and money
 
-`shared-cpu-1x` / 256 МБ входит в бесплатные ресурсы Fly. 512 МБ взято с
-запасом: `curl_cffi` и `trafilatura` на тяжёлой странице съедают заметно
-больше, чем эхо-бот, а OOM-kill на 256 МБ ловить неприятно.
+`shared-cpu-1x` / 256 MB fits into Fly's free resources. 512 MB is taken with
+headroom: `curl_cffi` and `trafilatura` on a heavy page eat noticeably more than
+an echo bot, and chasing an OOM kill at 256 MB is unpleasant.
 
-`auto_stop_machines = "suspend"` + `min_machines_running = 0` — машина
-засыпает между сообщениями и просыпается на входящий webhook. Для чата, где
-ссылку кидают несколько раз в день, реальное потребление около нуля.
+`auto_stop_machines = "suspend"` + `min_machines_running = 0` — the machine
+sleeps between messages and wakes on an incoming webhook. For a chat where a link
+gets posted a few times a day, real consumption is close to zero.
 
-Важное отличие от `abooks_bot`: там стоит `auto_stop_machines = false`, потому
-что бот сам себя останавливает через Machines API после долгой задачи. Здесь
-задачи короткие — пусть Fly управляет сам.
+An important difference from `abooks_bot`: there `auto_stop_machines = false`,
+because that bot stops itself through the Machines API after a long job. Here the
+jobs are short — let Fly manage it.
 
-Холодный старт из suspend — доли секунды, Telegram успевает в свой таймаут.
-Из полностью остановленного состояния — несколько секунд, тоже нормально:
-Telegram ретраит webhook.
+A cold start from suspend takes a fraction of a second, Telegram makes its
+timeout. From a fully stopped state it's a few seconds, which is also fine:
+Telegram retries the webhook.
 
-**Том обязателен.** Файловая система машины Fly эфемерна; без `[mounts]`
-SQLite с историей ссылок пропадёт при первом же деплое. Тома привязаны к
-одному региону и одной машине — для однопользовательского бота это ровно то,
-что нужно, но масштабироваться горизонтально с ним нельзя.
+**The volume is mandatory.** A Fly machine's filesystem is ephemeral; without
+`[mounts]` the SQLite with the link history disappears on the first deploy.
+Volumes are pinned to one region and one machine — exactly what a single-user bot
+needs, but you can't scale horizontally with one.
 
-## Что делает сервис
+## What the service does
 
 ```
-POST /webhook от Telegram
-  -> достать URL из text_entities (type: url и text_link)
-     плюс message.link_preview_options.url
-  -> канонизация (см. 02)
-  -> дедуп по трём ключам в SQLite на томе
-  -> если новый: лестница обогащения (см. 03, 04)
-  -> Claude, structured output (см. 05)
-  -> запись .md в vault (см. ниже)
-  -> реакция на сообщение в чате как подтверждение
+POST /webhook from Telegram
+  -> pull URLs out of text_entities (type: url and text_link)
+     plus message.link_preview_options.url
+  -> canonicalization (see 02)
+  -> dedup on three keys in SQLite on the volume
+  -> if new: the enrichment ladder (see 03, 04)
+  -> Claude, structured output (see 05)
+  -> write the .md into the vault (see below)
+  -> a reaction on the chat message as confirmation
 ```
 
-Ответ на webhook отдавать **сразу 200**, работу делать в фоне
-(`asyncio.create_task` / `BackgroundTasks`). Telegram ждёт ответа считанные
-секунды и при таймауте ретраит — иначе получите дубли при медленном
-обогащении.
+Answer the webhook **with a 200 immediately** and do the work in the background
+(`asyncio.create_task` / `BackgroundTasks`). Telegram waits only a few seconds
+and retries on timeout — otherwise slow enrichment gives you duplicates.
 
-Реакция-эмодзи на исходное сообщение вместо ответного сообщения: подтверждение
-видно, чат не засоряется.
+An emoji reaction on the original message instead of a reply: the confirmation is
+visible and the chat stays clean.
 
-## Как заметки попадают в Obsidian
+## How notes get into Obsidian
 
-Три варианта, по возрастанию геморроя:
+Three options, in increasing order of hassle:
 
-**1. Git (рекомендуется).** Vault — приватный репозиторий на GitHub. Сервис
-клонирует его на том при старте, коммитит новую заметку, пушит. Локально
-Obsidian Git подтягивает.
+**1. Git (recommended).** The vault is a private GitHub repo. The service clones
+it onto the volume at startup, commits the new note and pushes. Locally Obsidian
+Git pulls it in.
 
-Плюсы: история версий, работает на любом устройстве, никаких дыр наружу.
-Минусы: конфликты, если правите vault с двух сторон одновременно (для
-однопользовательского сценария практически не случается).
+Pros: version history, works on any device, nothing exposed to the outside.
+Cons: conflicts if you edit the vault from both sides at once (in a single-user
+scenario this basically never happens).
 
-Токен — fine-grained PAT только на один репозиторий, в `fly secrets`.
+The token is a fine-grained PAT scoped to one repo, in `fly secrets`.
 
-**2. Obsidian Local REST API.** Плагин поднимает HTTP-сервер прямо в Obsidian.
-Сервис на Fly дёргает его и создаёт заметку.
+**2. Obsidian Local REST API.** The plugin runs an HTTP server inside Obsidian.
+The service on Fly calls it and creates the note.
 
-Проблема очевидна: ваш ноутбук должен быть доступен из интернета и включён.
-Решается через Tailscale или Cloudflare Tunnel, но это лишний движущийся
-кусок, который будет отваливаться.
+The problem is obvious: your laptop has to be reachable from the internet and
+switched on. Tailscale or a Cloudflare Tunnel solves it, but that's one more
+moving part that will fall over.
 
-**3. Промежуточная очередь.** Сервис пишет только в SQLite на томе, отдаёт
-`GET /pending`; локальный скрипт по расписанию забирает и раскладывает в vault.
+**3. An intermediate queue.** The service only writes to SQLite on the volume and
+serves `GET /pending`; a local script picks them up on a schedule and lays them
+out in the vault.
 
-Надёжнее всех и не требует доступа снаружи, но появляется ручной шаг.
+The most reliable, and it needs no inbound access, but it adds a manual step.
 
-Для одного человека **вариант 1** — правильный компромисс. Вариант 3 разумен,
-если vault лежит в iCloud/Obsidian Sync и git туда не заводится.
+For one person **option 1** is the right compromise. Option 3 makes sense if the
+vault lives in iCloud/Obsidian Sync and git won't work there.
 
-## Настройка бота в группе
+## Setting the bot up in the group
 
-- Бот должен быть **администратором** группы, либо с **выключенным privacy
-  mode** (BotFather → `/setprivacy` → Disable). Иначе он видит только команды,
-  адресованные лично ему, и ни одной ссылки
-- **После смены privacy mode бота надо удалить из группы и добавить заново** —
-  настройка применяется в момент добавления. Это ловушка, на которой теряют час
-- Один бот = один webhook URL. `setWebhook` перезаписывает предыдущий молча
-- Ссылки приходят в `message.entities` (`type: "url"` — голый текст) и
-  `type: "text_link"` (гиперссылка, URL в поле `url`). Забыть про второй —
-  значит потерять все ссылки, вставленные под текстом
-- Превью, которое Telegram сам подтянул, лежит в `link_preview_options` —
-  бесплатные метаданные, можно использовать как нулевой тир обогащения
+- The bot has to be a group **admin**, or have **privacy mode off**
+  (BotFather → `/setprivacy` → Disable). Otherwise it only sees commands
+  addressed to it personally, and not a single link
+- **After changing privacy mode you have to remove the bot from the group and add
+  it again** — the setting applies at the moment of adding. This is the trap that
+  costs people an hour
+- One bot = one webhook URL. `setWebhook` overwrites the previous one silently
+- Links arrive in `message.entities` (`type: "url"` — bare text) and
+  `type: "text_link"` (a hyperlink, the URL in the `url` field). Forget the
+  second one and you lose every link hidden under text
+- The preview Telegram pulled itself sits in `link_preview_options` — free
+  metadata, usable as tier zero of enrichment
 
-## Деплой
+## Deploy
 
 ```bash
-fly launch --no-deploy          # сгенерирует fly.toml, поправить руками
+fly launch --no-deploy          # generates fly.toml, fix it by hand
 fly volumes create links_data --region fra --size 1
 fly secrets set TG_BOT_TOKEN=... ANTHROPIC_API_KEY=... GITHUB_TOKEN=...
 fly deploy
 curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://tg-links-collector.fly.dev/webhook"
 ```
 
-Проверить, что webhook встал:
+Check that the webhook took:
 
 ```bash
 curl "https://api.telegram.org/bot<TOKEN>/getWebhookInfo"
 ```
 
-Поле `last_error_message` — первое место, куда смотреть, когда бот молчит.
+The `last_error_message` field is the first place to look when the bot goes
+quiet.
 
-## Чего этот сервис НЕ делает
+## What this service does NOT do
 
-Бэкфилл истории. Bot API не имеет метода для чтения прошлых сообщений — ни
-сейчас, ни в перспективе (24 часа хранения обновлений, дальше данные для бота
-не существуют).
+Backfill the history. The Bot API has no method for reading past messages — not
+now and not in prospect (updates are kept 24 hours, after that the data doesn't
+exist for the bot).
 
-История выгружается один раз локально через Telethon с вашего пользовательского
-аккаунта (шаг 1 плана), результат заливается в тот же SQLite. Гонять Telethon-
-юзербот на сервере постоянно не нужно и рискованно для аккаунта.
+The history is dumped once, locally, through Telethon from your user account
+(step 1 of the plan), and the result is loaded into the same SQLite. There's no
+need to run a Telethon userbot on the server permanently, and it's risky for the
+account.

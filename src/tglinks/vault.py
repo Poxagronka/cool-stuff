@@ -8,6 +8,22 @@ from pathlib import Path
 import yaml
 
 ILLEGAL = re.compile(r'[<>:"/\\|?*\x00-\x1f]')
+LINK = re.compile(r"(?:https?://|www\.)\S+", re.I)
+
+# the heading over the quotes, by where they were said
+SAID_UNDER = {"chat": "From the chat", "saved": "Saved to myself"}
+
+
+def speech(text: str) -> str:
+    """What a person actually said, with the urls taken out.
+
+    One message in the chat was a list of twenty instagram profiles under the
+    word "clo". Quoted whole, it became the visible context of every one of
+    those twenty links and dragged all their domains into the search index —
+    searching for one brand returned the other nineteen.
+    """
+    stripped = LINK.sub(" ", text)
+    return re.sub(r"[ \t]+", " ", stripped).strip(" \n-—·,")
 
 
 def slug(text: str, limit: int = 60) -> str:
@@ -24,7 +40,7 @@ def note_path(root: Path, entry: dict) -> Path:
     properties, so nothing is lost.
     """
     sent = entry["shared_at"]
-    name = slug(entry["title"] or entry["domain"]) or "ссылка"
+    name = slug(entry["title"] or entry["domain"]) or "link"
     return root / "links" / sent[:4] / f"{name}.md"
 
 
@@ -43,7 +59,7 @@ def free_path(root: Path, entry: dict) -> Path:
     """Path for the note, sidestepping a name another link already took.
 
     Links with no metadata collapse into the same name — several TikToks
-    shared the same day all become "TikTok видео" — and without this the last
+    shared the same day all become "TikTok video" — and without this the last
     one silently overwrites the rest.
     """
     path = note_path(root, entry)
@@ -51,6 +67,23 @@ def free_path(root: Path, entry: dict) -> Path:
         return path
     tail = hashlib.sha1(entry["url"].encode()).hexdigest()[:6]
     return path.with_name(f"{path.stem} {tail}.md")
+
+
+def retire(root: Path, rel_path: str, url: str) -> bool:
+    """Take away a note an entry has moved off, if it is provably that entry's.
+
+    A renamed link leaves its old file behind, still indexed and still found
+    by search, saying whatever it said before. The name proves nothing —
+    free_path hands two different links the same stem with a hash on the end —
+    so the url inside the file is the only proof of whose note it is. The vault
+    is a git repo that gets pushed, so a guess here deletes someone's note for
+    good; refusing is always the cheaper mistake.
+    """
+    path = root / rel_path
+    if not path.is_file() or url_of(path) != url:
+        return False
+    path.unlink()
+    return True
 
 
 def tg_link(chat_id: int, msg_id: int) -> str:
@@ -78,9 +111,16 @@ def render(entry: dict, context: list[dict]) -> str:
         "tags": entry.get("tags", []),
         "shared_by": entry.get("shared_by", ""),
         "shared_at": entry["shared_at"],
+        # where it came from. a note saved to yourself reads differently from
+        # one the group discussed, and the vault should say which it is
+        "source": entry.get("source", "chat"),
         "status": entry.get("status", "ok"),
         "confidence": entry.get("confidence", "low"),
     }
+    # search only, never displayed: russian and english words for the same
+    # thing, so the language a note happens to be written in stops mattering
+    if entry.get("keywords"):
+        front["keywords"] = entry["keywords"]
     # basic groups have no deep link, and an empty property is noise in bases
     if entry.get("tg_link"):
         front["tg_link"] = entry["tg_link"]
@@ -99,18 +139,19 @@ def render(entry: dict, context: list[dict]) -> str:
 
     body.append(f"[{entry['domain']}]({entry['url']})\n")
 
-    quoted = [m for m in context if (m.get("text") or "").strip()]
+    quoted = [(m, speech(m.get("text") or "")) for m in context]
+    quoted = [(m, said) for m, said in quoted if said]
     if quoted:
-        body.append("## Из чата\n")
-        for msg in quoted:
-            author = msg.get("author") or "кто-то"
+        body.append(f"## {SAID_UNDER.get(entry.get('source'), 'From the chat')}\n")
+        for msg, said in quoted:
+            author = msg.get("author") or "someone"
             when = msg.get("sent_at", "")[11:16]
-            text = msg["text"].strip().replace("\n", "\n> ")
-            body.append(f"> **{author}**, {when}\n> {text}\n>")
+            wrapped = said.replace("\n", "\n> ")
+            body.append(f"> **{author}**, {when}\n> {wrapped}\n>")
         body.append("")
 
     if entry.get("tg_link"):
-        body.append(f"[Открыть в Telegram]({entry['tg_link']})\n")
+        body.append(f"[Open in Telegram]({entry['tg_link']})\n")
 
     return "\n".join(body)
 
@@ -127,7 +168,7 @@ ALL_LINKS_BASE = """filters:
     - file.hasProperty("url")
 views:
   - type: table
-    name: Все ссылки
+    name: All links
     order:
       - file.name
       - category
@@ -135,12 +176,13 @@ views:
       - description
       - domain
       - shared_by
+      - source
       - shared_at
     sort:
       - property: shared_at
         direction: DESC
   - type: cards
-    name: Витрина
+    name: Gallery
     image: image
     order:
       - file.name
@@ -148,7 +190,7 @@ views:
       - tags
       - description
   - type: table
-    name: По категориям
+    name: By category
     groupBy: category
     order:
       - file.name
@@ -167,7 +209,7 @@ INBOX_BASE = """filters:
     - confidence == "low"
 views:
   - type: table
-    name: Разобрать
+    name: To sort
     order:
       - file.name
       - category

@@ -1,15 +1,15 @@
-# Структура vault в Obsidian
+# Vault structure in Obsidian
 
-## Принцип: одна ссылка = одна заметка
+## Principle: one link = one note
 
-Альтернатива — один большой файл-таблица — проще генерировать, но убивает всё,
-ради чего берут Obsidian: обратные ссылки, теги, поиск по фрагменту, открытие
-заметки в отдельной панели.
+The alternative — a single big table file — is easier to generate, but it kills
+everything you take Obsidian for: backlinks, tags, search by fragment, opening a
+note in its own pane.
 
-Заметок будет 1000–5000. Obsidian такое держит спокойно; тормозит он на
-Graph view и на плагинах, а не на количестве файлов.
+There will be 1000–5000 notes. Obsidian handles that fine; what slows it down is
+Graph view and plugins, not the number of files.
 
-## Структура папок
+## Folder layout
 
 ```
 LinksVault/
@@ -25,18 +25,18 @@ LinksVault/
   _templates/
 ```
 
-Раскладка по годам, а не по категориям. Категория живёт во frontmatter и
-фильтруется в Bases; папка нужна только чтобы в одной директории не лежало
-5000 файлов (это уже неудобно даже в файловом менеджере).
+Split by year, not by category. The category lives in frontmatter and is filtered
+in Bases; the folder only exists so that 5000 files don't sit in one directory
+(that's already awkward even in a file manager).
 
-Имя файла:
+File name:
 
 ```
 2024-11-03 arcteryx — Beta LT Jacket.md
 ```
 
-Дата первым — сортировка по имени сразу хронологическая. Домен — потому что
-глазами ищут именно по нему.
+Date first, so sorting by name is already chronological. Then the domain, because
+that's what people scan for.
 
 ## Frontmatter
 
@@ -47,8 +47,8 @@ canonical_url: https://arcteryx.com/eu/en/shop/mens/beta-lt-jacket
 domain: arcteryx.com
 title: Arc'teryx Beta LT
 category: clothing
-tags: [gore-tex, куртка, дорого]
-shared_by: Дима
+tags: [gore-tex, jacket, expensive]
+shared_by: Dima
 shared_at: 2024-11-03T21:14:00
 status: ok
 price: "€500"
@@ -57,53 +57,54 @@ tg_link: https://t.me/c/1234567890/45678
 ---
 ```
 
-Что стоит отдельного упоминания:
+Worth calling out:
 
-- **`tg_link`** — прямая ссылка на исходное сообщение. Формат для приватных
-  групп: `https://t.me/c/<chat_id без -100>/<message_id>`. Кликается в
-  Obsidian, открывает Telegram на нужном сообщении. Самое недооценённое поле:
-  когда заметка не отвечает на вопрос, оригинальный тред отвечает
-- **`status`** — `ok` / `dead` / `inbox`. Мёртвые ссылки **не удалять**:
-  название и обсуждение остаются полезными
-- **`shared_by`** — в чате на несколько человек это реальный поисковый ключ
-  («Дима что-то кидал про ботинки»)
-- **`price`** — в кавычках, иначе Obsidian попытается распарсить число
+- **`tg_link`** — a direct link to the original message. Format for private
+  groups: `https://t.me/c/<chat_id without -100>/<message_id>`. It's clickable in
+  Obsidian and opens Telegram on that message. The most underrated field: when
+  the note doesn't answer the question, the original thread does
+- **`status`** — `ok` / `dead` / `inbox`. **Don't delete** dead links: the name
+  and the discussion are still useful
+- **`shared_by`** — in a chat with several people this is a real search key
+  ("Dima posted something about boots")
+- **`price`** — in quotes, otherwise Obsidian tries to parse it as a number
 
-Типы свойств Obsidian задаёт в `.obsidian/types.json`. Проставить один раз в
-UI (правый клик по свойству → Property type): `tags` → Tags, `shared_at` →
+Obsidian stores property types in `.obsidian/types.json`. Set them once in the UI
+(right-click a property → Property type): `tags` → Tags, `shared_at` →
 Date & time, `url` → URL, `category` → Text.
 
-## Тело заметки
+## Note body
 
 ```markdown
 ![](https://images.arcteryx.com/...)
 
-Мембранная куртка на межсезонье, самая лёгкая в линейке Beta.
+A shell jacket for the shoulder seasons, the lightest in the Beta line.
 
-## Из чата
+## From the chat
 
-> **Дима**, 3 ноя 2024, 21:14
-> вот эта норм на осень, у меня такая третий год
+> **Dima**, 3 Nov 2024, 21:14
+> this one's decent for autumn, I've had mine three years
 >
-> **Саша**, 21:16
-> дорого конечно
+> **Sasha**, 21:16
+> pricey though
 >
-> **Дима**, 21:18
-> на распродаже в конце января берут за 350
+> **Dima**, 21:18
+> in the end-of-January sale people get it for 350
 
-[Открыть в Telegram](https://t.me/c/1234567890/45678)
+[Open in Telegram](https://t.me/c/1234567890/45678)
 ```
 
-**Реплики из чата дословно — самая ценная часть заметки.** Поиск в Obsidian
-идёт по телу файла, и находится по ним: помнишь «что-то про Норвегию и
-мембрану», а не название модели. og:description этого никогда не даст.
+**The verbatim chat lines are the most valuable part of the note.** Obsidian
+search runs over the file body and finds things by them: you remember "something
+about Norway and a membrane", not the model name. og:description will never give
+you that.
 
-## Bases вместо Dataview
+## Bases instead of Dataview
 
-**Bases — ядровой плагин** с Obsidian 1.9 (июнь 2025), к 1.13.x доросли
-формулы, сводные таблицы, встроенные представления. Ставить Dataview для новых
-vault больше не нужно: Bases быстрее (нативная реализация, не пересчёт JS на
-каждый рендер) и не отвалится вместе с плагином.
+**Bases is a core plugin** as of Obsidian 1.9 (June 2025), and by 1.13.x it has
+grown formulas, pivot tables and built-in views. There's no need to install
+Dataview for a new vault anymore: Bases is faster (a native implementation, not
+JS recomputed on every render) and won't fall over along with the plugin.
 
 `bases/All Links.base`:
 
@@ -113,7 +114,7 @@ filters:
     - file.hasProperty("url")
 views:
   - type: table
-    name: Все ссылки
+    name: All links
     order:
       - file.name
       - category
@@ -124,14 +125,14 @@ views:
       - property: shared_at
         direction: DESC
   - type: cards
-    name: Витрина
+    name: Showcase
     filters:
       and:
         - category == "clothing"
     image: image
 ```
 
-`bases/Inbox.base` — то, что требует ручного разбора:
+`bases/Inbox.base` — the stuff that needs manual triage:
 
 ```yaml
 filters:
@@ -140,56 +141,57 @@ filters:
     - category == "misc"
 ```
 
-**Практика:** собрать view в UI, а потом причесать YAML руками. Синтаксис
-`.base` документирован скупо, а UI генерирует корректный файл.
+**In practice:** build the view in the UI, then tidy the YAML by hand. The
+`.base` syntax is documented sparsely, and the UI generates a correct file.
 
-Представление cards с `image` из frontmatter превращает раздел с одеждой в
-нормальную визуальную витрину — по картинке шмотку узнаёшь мгновенно, по
-названию нет.
+A cards view with `image` from frontmatter turns the clothing section into a
+proper visual showcase — you recognize an item from the picture instantly, from
+the name you don't.
 
-## Три слоя поиска
+## Three layers of search
 
-1. **Встроенный поиск** — точные строки, `tag:#gore-tex`, `path:2024`,
-   `["category":"clothing"]`. Быстрый, всегда под рукой
-2. **Omnisearch** — нечёткий, с опечатками, ранжирование по релевантности.
-   Ставить сразу, это то, чего не хватает встроенному
-3. **Smart Connections** — локальные эмбеддинги, семантический поиск и
-   «похожие заметки». Ставить **через месяц** после накопления данных, не
-   раньше: на пустом vault нечего связывать, а индексация не бесплатна
+1. **Built-in search** — exact strings, `tag:#gore-tex`, `path:2024`,
+   `["category":"clothing"]`. Fast, always at hand
+2. **Omnisearch** — fuzzy, tolerant of typos, ranked by relevance. Install it
+   right away, it's what the built-in one is missing
+3. **Smart Connections** — local embeddings, semantic search and "similar notes".
+   Install it **a month in**, once data has piled up, not earlier: there's
+   nothing to connect in an empty vault, and indexing isn't free
 
-Слои дополняют друг друга. Начать с 1+2, третий по необходимости.
+The layers complement each other. Start with 1+2, add the third if you need it.
 
-## Плагины
+## Plugins
 
-Минимум:
+Minimum:
 
-- **Omnisearch** — нечёткий поиск
-- **Bases** — ядровой, включить в настройках
+- **Omnisearch** — fuzzy search
+- **Bases** — core, enable it in settings
 
-По желанию:
+Optional:
 
-- **Smart Connections** — семантика, позже
-- **Templater** — если будете заводить ссылки руками
-- **Local REST API** — если хотите, чтобы внешний сервис писал заметки
-  напрямую в vault (см. 09-deployment.md; альтернатива — писать `.md` в папку
-  через git/синк, что проще)
+- **Smart Connections** — semantics, later
+- **Templater** — if you'll be adding links by hand
+- **Local REST API** — if you want an external service to write notes straight
+  into the vault (see 09-deployment.md; the alternative is writing `.md` into a
+  folder via git/sync, which is simpler)
 
-**Отключить Graph view.** На 5000 заметок он ест ресурсы и не даёт ничего:
-ссылки между заметками почти отсутствуют, граф выродится в облако точек.
+**Turn off Graph view.** At 5000 notes it eats resources and gives nothing:
+there are almost no links between notes, so the graph degenerates into a cloud
+of dots.
 
-## Синхронизация
+## Syncing
 
-| Вариант | Плюсы | Минусы |
+| Option | Pros | Cons |
 |---|---|---|
-| **Obsidian Sync** | $4–8/мес, работает на мобильном без плясок | платно |
-| **git + Obsidian Git** | бесплатно, история версий | конфликты на мобильном, iOS болезненно |
-| **iCloud / Dropbox** | бесплатно, прозрачно | периодические конфликты `.obsidian/`, на iOS ленивая подгрузка файлов |
-| **Syncthing** | бесплатно, P2P, быстро | нет нормального iOS-клиента |
+| **Obsidian Sync** | $4–8/mo, works on mobile with no fuss | paid |
+| **git + Obsidian Git** | free, version history | conflicts on mobile, painful on iOS |
+| **iCloud / Dropbox** | free, transparent | periodic `.obsidian/` conflicts, lazy file loading on iOS |
+| **Syncthing** | free, P2P, fast | no decent iOS client |
 
-Если vault генерируется скриптом и мобильный нужен только на чтение — git
-достаточно. Если планируете править с телефона — Obsidian Sync, остальное
-будет бесить.
+If the vault is generated by a script and mobile is read-only, git is enough. If
+you plan to edit from your phone, use Obsidian Sync — anything else will annoy
+you.
 
-Отдельно: `.obsidian/` в синке — источник половины конфликтов. Держать в
-`.gitignore` всё, кроме `.obsidian/types.json` и папки с плагинами, которую
-хотите разделять.
+Separately: `.obsidian/` in sync is the source of half the conflicts. Keep
+everything in `.gitignore` except `.obsidian/types.json` and the plugin folder
+you want to share.

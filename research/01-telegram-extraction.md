@@ -1,269 +1,277 @@
-# Извлечение сообщений и ссылок из Telegram
+# Pulling messages and links out of Telegram
 
-Проверено 2026-08-02.
+Checked 2026-08-02.
 
-## Ключевой факт
+## The key fact
 
-Достать историю и собирать новое — **две разные технологии**. Бот через Bot API
-физически не может прочитать ничего, что было до его добавления в группу.
-Userbot через MTProto может всё, но держать его 24/7 — риск бана.
+Getting the history and collecting new stuff are **two different technologies**.
+A bot on the Bot API physically cannot read anything that happened before it was
+added to the group. A userbot over MTProto can read everything, but running one
+24/7 risks a ban.
 
-Отсюда гибрид: userbot один раз для бэкфилла, бот навсегда для нового.
+Hence the hybrid: a userbot once for the backfill, a bot forever for what comes
+next.
 
-## Сводная таблица
+## Summary table
 
-| Способ | Бэкфилл | Live | Превью ссылок | Риск |
+| Method | Backfill | Live | Link previews | Risk |
 |---|---|---|---|---|
-| Telegram Desktop export JSON | да | нет | **нет**, только URL | нулевой |
-| `tdl` (Go CLI, MTProto) | да | по крону | частично | userbot |
-| **Telethon 1.44 / Kurigram** | **да** | да | **да, полные** | бан аккаунта |
-| Bot API / n8n Telegram Trigger | **невозможно** | да | да | нулевой |
-| TDLib (Pytdbot) | да | да | да | тот же + сложность |
-| Zapier / Make / Readwise / Raindrop | нет | да | — | — |
+| Telegram Desktop export JSON | yes | no | **no**, URL only | none |
+| `tdl` (Go CLI, MTProto) | yes | by cron | partial | userbot |
+| **Telethon 1.44 / Kurigram** | **yes** | yes | **yes, full** | account ban |
+| Bot API / n8n Telegram Trigger | **impossible** | yes | yes | none |
+| TDLib (Pytdbot) | yes | yes | yes | same + complexity |
+| Zapier / Make / Readwise / Raindrop | no | yes | — | — |
 
-## 1. Официальный экспорт Telegram Desktop
+## 1. Official Telegram Desktop export
 
-Settings → Advanced → Export Telegram data, либо правый клик по чату →
-Export chat history. Схема: [core.telegram.org/import-export](https://core.telegram.org/import-export).
+Settings → Advanced → Export Telegram data, or right-click a chat →
+Export chat history. Schema: [core.telegram.org/import-export](https://core.telegram.org/import-export).
 
-Поля сообщения: `id`, `type` (`message`/`service`), `date`, `date_unixtime`,
-`edited`, `from`, `from_id` (формат `user123456`), `reply_to_message_id`,
+Message fields: `id`, `type` (`message`/`service`), `date`, `date_unixtime`,
+`edited`, `from`, `from_id` (format `user123456`), `reply_to_message_id`,
 `forwarded_from`, `saved_from`, `via_bot`, `author`.
 
-**Текст лежит в двух параллельных полях:**
-- `text` — строка или массив строк и объектов-сущностей (легаси, неудобно)
-- `text_entities` — плоский массив `{type, text}`, покрывает весь текст
+**The text sits in two parallel fields:**
+- `text` — a string, or an array of strings and entity objects (legacy, awkward)
+- `text_entities` — a flat array of `{type, text}` covering the whole text
 
-**Для ссылок нужен `text_entities`**, типы `link` (голый URL) и `text_link`
-(скрытая гиперссылка, href в отдельном поле).
+**You need `text_entities` for links**, types `link` (bare URL) and `text_link`
+(hidden hyperlink, href in a separate field).
 
-Типы сущностей целиком: `mention`, `hashtag`, `bot_command`, `link`, `email`,
+Full list of entity types: `mention`, `hashtag`, `bot_command`, `link`, `email`,
 `bold`, `italic`, `code`, `pre`, `plain`, `text_link`, `mention_name`, `phone`,
 `cashtag`, `underline`, `strikethrough`, `blockquote`, `bank_card`, `spoiler`,
 `custom_emoji`, `unknown`.
 
-### Главный минус
+### The main downside
 
-**Link preview не экспортируется вообще.** В схеме нет объекта webpage — ни
-title, ни description, ни og-картинки. Только URL в тексте. Метаданные придётся
-дофетчивать самому.
+**Link previews are not exported at all.** The schema has no webpage object — no
+title, no description, no og image. Only the URL in the text. You have to fetch
+the metadata yourself.
 
-### Лимиты
+### Limits
 
-- Порог размера медиа по умолчанию небольшой (~8 МБ), слайдер до ~4 ГБ.
-  **Файлы выше порога скипаются молча** — в JSON вместо пути warning-строка.
-- Ограничений по количеству сообщений и глубине истории нет.
-- Полный экспорт большого аккаунта — от минут до часа+.
-- Только Telegram Desktop, в мобильных клиентах фичи нет.
-- Первый запрос полного экспорта может быть отложен на срок ожидания.
+- The default media size threshold is small (~8 MB), the slider goes up to ~4 GB.
+  **Files above the threshold are skipped silently** — the JSON has a warning
+  string instead of a path.
+- No limits on message count or history depth.
+- A full export of a large account takes anywhere from minutes to an hour or more.
+- Telegram Desktop only, mobile clients don't have the feature.
+- The first full-export request may be delayed by a waiting period.
 
-### Инкрементальность — частичная
+### Incremental — partly
 
-- Для **одного чата** диапазон дат выбрать можно (From/To).
-- Для **массового** «export all data» диапазона **нет**. Открытый feature
+- For **a single chat** you can pick a date range (From/To).
+- For a **bulk** "export all data" there is **no** range. Open feature
   request: [tdesktop#30463](https://github.com/telegramdesktop/tdesktop/issues/30463)
-  (открыт 2026-03-20, PR #30618 висит).
-- Автоматизировать нельзя: GUI-only, CLI нет.
+  (opened 2026-03-20, PR #30618 still hanging).
+- Can't be automated: GUI only, no CLI.
 
-### Альтернатива с CLI — `tdl`
+### CLI alternative — `tdl`
 
 [docs.iyear.me/tdl](https://docs.iyear.me/tdl/guide/tools/export-messages/), Go,
-MTProto под капотом.
+MTProto under the hood.
 
 ```
 tdl chat export -c CHAT -T time -i <unix_from>,<unix_to>
 ```
 
-Также `-T id` / `-T last`, фильтры на уровне выражений. Пригодно для крона.
-Формально это уже userbot — нужны api_id/api_hash.
+Also `-T id` / `-T last`, plus expression-level filters. Works under cron.
+Technically this is already a userbot — it needs api_id/api_hash.
 
 ## 2. Bot API
 
-[core.telegram.org/bots/api](https://core.telegram.org/bots/api). Актуальная
-версия на середину 2026 — **9.4**.
+[core.telegram.org/bots/api](https://core.telegram.org/bots/api). Current
+version as of mid-2026 is **9.4**.
 
-### Может ли бот читать всё в группе
+### Can a bot read everything in a group
 
-Да, при одном из двух условий:
+Yes, under one of two conditions:
 
-1. **Privacy mode выключен** через @BotFather (`/setprivacy` → Disable).
-   По умолчанию включён: с ним бот видит только команды `/cmd`, реплаи на свои
-   сообщения и сервисные события.
-2. **Бот админ** — админы всегда получают всё независимо от privacy mode.
+1. **Privacy mode turned off** via @BotFather (`/setprivacy` → Disable).
+   It's on by default: with it the bot only sees `/cmd` commands, replies to its
+   own messages, and service events.
+2. **The bot is an admin** — admins always get everything regardless of privacy
+   mode.
 
-⚠️ **После смены privacy mode бота надо удалить из группы и добавить заново**,
-иначе настройка не применится.
+⚠️ **After changing privacy mode you have to remove the bot from the group and
+add it again**, otherwise the setting won't take effect.
 
-Никогда не получит: **сообщения других ботов** (защита от петель).
+It will never get **messages from other bots** (loop protection).
 
-### Истории задним числом нет
+### No history after the fact
 
-Жёсткое ограничение. В Bot API нет метода «получить историю чата». Апдейты
-хранятся на сервере **не дольше 24 часов** и удаляются, как только подтверждены
-(`getUpdates` с `offset` выше их `update_id`).
+A hard limit. The Bot API has no "get chat history" method. Updates are kept on
+the server for **no longer than 24 hours** and are deleted as soon as they're
+acknowledged (`getUpdates` with an `offset` above their `update_id`).
 
-Всё, что было до добавления бота, для него не существует.
+Everything that happened before the bot was added does not exist for it.
 
 ### getUpdates vs webhook
 
-Взаимоисключающие: пока стоит webhook, `getUpdates` возвращает ошибку.
+Mutually exclusive: while a webhook is set, `getUpdates` returns an error.
 
-- `getUpdates` — максимум 100 апдейтов за вызов, long polling через `timeout`
-- webhook — только HTTPS, порты 443/80/88/8443, max 100 соединений
-  (`max_connections`), фильтр типов через `allowed_updates`
-- **Один webhook на бота** — ключевая боль для n8n
+- `getUpdates` — at most 100 updates per call, long polling via `timeout`
+- webhook — HTTPS only, ports 443/80/88/8443, max 100 connections
+  (`max_connections`), type filter via `allowed_updates`
+- **One webhook per bot** — the key pain point for n8n
 
-### Лимиты отправки
+### Sending limits
 
-Входящие не лимитируются. Исходящие: ~30 msg/sec суммарно, ~1 msg/sec в один
-чат, ~20 msg/min в группу.
+Incoming isn't limited. Outgoing: ~30 msg/sec total, ~1 msg/sec to a single
+chat, ~20 msg/min into a group.
 
 ## 3. Userbot / MTProto
 
-Нужны **api_id + api_hash** с [my.telegram.org](https://my.telegram.org) и
-авторизация по номеру. Сессия сохраняется в файл/строку.
+You need **api_id + api_hash** from [my.telegram.org](https://my.telegram.org)
+and phone-number auth. The session is saved to a file or a string.
 
-### Статус библиотек — в 2026 много сдвигов
+### Library status — a lot moved in 2026
 
 **Telethon (Python)**
-- Репозиторий LonamiWebs/Telethon **архивирован 2026-02-21**, read-only
-- Разработка на **Codeberg: `codeberg.org/Lonami/Telethon`**
-- Стабильная **v1.44.0 от 2026-06-15**, в maintenance mode (багфиксы + layer)
-- **v2 всё ещё альфа** (`2.0.0a0`, октябрь 2025), обратной совместимости нет
-- Брать v1
+- The LonamiWebs/Telethon repo was **archived 2026-02-21**, read-only
+- Development moved to **Codeberg: `codeberg.org/Lonami/Telethon`**
+- Stable **v1.44.0 from 2026-06-15**, in maintenance mode (bugfixes + layer)
+- **v2 is still alpha** (`2.0.0a0`, October 2025), no backwards compatibility
+- Take v1
 
-**Pyrogram — мёртв.** Преемник: [Kurigram](https://github.com/KurimuzonAkuma/kurigram)
-2.2.24 (2026-07-11), Python ≥3.8, LGPL-3.0, drop-in замена (`import pyrogram`
-работает), поддерживает Gifts/Stories/Topics/Business. Второй форк —
-`pyrotgfork`, менее популярен.
+**Pyrogram is dead.** Successor: [Kurigram](https://github.com/KurimuzonAkuma/kurigram)
+2.2.24 (2026-07-11), Python ≥3.8, LGPL-3.0, drop-in replacement (`import pyrogram`
+works), supports Gifts/Stories/Topics/Business. The other fork,
+`pyrotgfork`, is less popular.
 
-**GramJS (Node/TS) — архивирован 2026-07-14.** npm-пакет `telegram` не
-поддерживается. Преемник — **`teleproto`**, «largely compatible» форк, миграция
-= замена пакета.
+**GramJS (Node/TS) — archived 2026-07-14.** The npm package `telegram` is
+unmaintained. Successor is **`teleproto`**, a "largely compatible" fork; migration
+is a package swap.
 
-**Итог:** Python → Telethon v1.44 или Kurigram 2.2.x. Node → teleproto.
+**Bottom line:** Python → Telethon v1.44 or Kurigram 2.2.x. Node → teleproto.
 
-### Чтение истории
+### Reading history
 
 ```python
 client.iter_messages(chat, limit=None, offset_id=..., reverse=True)  # Telethon
 client.get_chat_history()                                            # Kurigram
 ```
 
-Тянут **всю историю**, включая до вашего присоединения (для публичных групп),
-пачками по 100. `min_id`/`offset_id` → инкремент тривиален.
+They pull **the entire history**, including messages from before you joined (for
+public groups), in batches of 100. With `min_id`/`offset_id` incremental runs are
+trivial.
 
-**Здесь же полные link previews:** `MessageMediaWebPage` с `title`,
-`description`, `site_name`, `url`, `photo`. Это главный аргумент за MTProto,
-если задача про ссылки.
+**Full link previews live here too:** `MessageMediaWebPage` with `title`,
+`description`, `site_name`, `url`, `photo`. That's the main argument for MTProto
+if the task is about links.
 
-Плюс `search` по чату с фильтром `InputMessagesFilterUrl` — вытащить **только
-сообщения со ссылками**, не выкачивая весь чат.
+Plus `search` over a chat with the `InputMessagesFilterUrl` filter — pull **only
+the messages with links** without downloading the whole chat.
 
-### Rate limits и бан
+### Rate limits and bans
 
-- `FloodWaitError` — троттлинг, не бан. От секунд до 24+ часов. Telethon сам
-  спит, если ожидание <60 сек (`flood_sleep_threshold`).
-- Точных лимитов Telegram не публикует. Практика: **1–2 сек между запросами
-  держат стабильно бесконечно**.
-- Реальный риск — **бан аккаунта**. Триггеры: свежий аккаунт, массовое
-  вступление в чаты, резкий старт на высокой скорости, много `ResolveUsername`.
-- Митигация: аккаунт с историей, не основной SIM, переменные задержки,
-  постепенный разгон, одна сессия на аккаунт.
-- Формально массовый сбор нарушает дух ToS.
+- `FloodWaitError` is throttling, not a ban. From seconds to 24+ hours. Telethon
+  sleeps on its own if the wait is <60 sec (`flood_sleep_threshold`).
+- Telegram doesn't publish exact limits. In practice: **1–2 sec between requests
+  runs stably forever**.
+- The real risk is **an account ban**. Triggers: a fresh account, joining many
+  chats at once, a sudden start at high speed, lots of `ResolveUsername`.
+- Mitigation: an account with history, not your main SIM, variable delays, ramp
+  up gradually, one session per account.
+- Formally, bulk collection goes against the spirit of the ToS.
 
 ## 4. TDLib
 
-[core.telegram.org/tdlib](https://core.telegram.org/tdlib). Официальная C++
-библиотека, на ней построены сами клиенты. Локальная БД, кэш, полный MTProto,
-работает и как user, и как bot.
+[core.telegram.org/tdlib](https://core.telegram.org/tdlib). The official C++
+library, the one the clients themselves are built on. Local DB, cache, full
+MTProto, works both as user and as bot.
 
-Плюс: официальность, надёжность, корректная обработка апдейтов, локальное
-хранилище. Минус: тяжёлая, нужно компилировать, API низкоуровневый.
+Upside: official, reliable, handles updates correctly, local storage. Downside:
+heavy, needs compiling, low-level API.
 
-**Python-обёртки, актуальные в 2026:**
-- **Pytdbot** — асинхронная, релиз 2026-02-22, рекомендована в README tdlib
-- **tdjson** (AYMENJD) — низкоуровневый биндинг, апрель 2026, пребилты под
-  Linux x64/ARM64, Windows x64, macOS M-series. Pytdbot построен поверх
-- **aiotdlib** — тоже в рекомендациях, развивается медленнее
-- **python-telegram** (alexander-akhmetov) — Python 3.10+, без Windows
-- `tdlib-python` (JunaidBabu) — старый, не брать
+**Python wrappers still alive in 2026:**
+- **Pytdbot** — async, released 2026-02-22, recommended in the tdlib README
+- **tdjson** (AYMENJD) — low-level binding, April 2026, prebuilts for
+  Linux x64/ARM64, Windows x64, macOS M-series. Pytdbot is built on top of it
+- **aiotdlib** — also in the recommendations, moves more slowly
+- **python-telegram** (alexander-akhmetov) — Python 3.10+, no Windows
+- `tdlib-python` (JunaidBabu) — old, don't take it
 
-⚠️ `telegram-bot-api` (self-hosted Bot API server на TDLib) снимает часть
-лимитов Bot API (файлы до 2000 МБ), **но доступа к истории не даёт** — это всё
-тот же Bot API.
+⚠️ `telegram-bot-api` (a self-hosted Bot API server on TDLib) lifts some Bot API
+limits (files up to 2000 MB), **but gives no access to history** — it's still the
+same Bot API.
 
 ## 5. n8n
 
-### Штатные ноды
+### Built-in nodes
 
-**Telegram Trigger** — только через webhook Bot API. 23+ типа апдейтов:
-`message`, `channel_post`, `edited_message`, business-события, callback/inline
-queries, poll, reactions, `chat_member`, chat boosts. По умолчанию подписан на
-всё кроме Chat Member, Message Reaction, Message Reaction Count. Есть опция
-Download Images/Files и фильтры по chat ID / user ID.
+**Telegram Trigger** — Bot API webhook only. 23+ update types:
+`message`, `channel_post`, `edited_message`, business events, callback/inline
+queries, poll, reactions, `chat_member`, chat boosts. By default it's subscribed
+to everything except Chat Member, Message Reaction, Message Reaction Count.
+There's a Download Images/Files option and filters by chat ID / user ID.
 
-**Telegram node** — sendMessage, getFile, getChat, admin-операции. Метода
-«получить историю» нет (его нет в Bot API).
+**Telegram node** — sendMessage, getFile, getChat, admin operations. No "get
+history" method (it doesn't exist in the Bot API).
 
-### Ограничения
+### Limitations
 
-1. **Наследует всё от Bot API** → ретроспективный бэкфилл невозможен в принципе
-2. **Один webhook на бота** → одна Telegram Trigger нода. Два воркфлоу на один
-   чат — либо второй бот, либо Switch внутри
-3. **Test URL перебивает Production URL**: пока тестируете, продакшн не
-   получает события. Самая частая жалоба в issues
-4. **Self-hosted**: обязательно `WEBHOOK_URL` (или `N8N_HOST`/`N8N_PROTOCOL`)
-   на публичный адрес. За реверс-прокси нужен проксинг websocket, иначе
-   редактор виснет на «listening». HTTPS обязателен
-5. `chat_member`, реакции, boosts требуют админских прав бота
+1. **Inherits everything from the Bot API** → a retroactive backfill is
+   impossible in principle
+2. **One webhook per bot** → one Telegram Trigger node. Two workflows on one
+   chat means either a second bot or a Switch inside
+3. **Test URL overrides Production URL**: while you're testing, production gets
+   no events. The most common complaint in the issues
+4. **Self-hosted**: `WEBHOOK_URL` (or `N8N_HOST`/`N8N_PROTOCOL`) pointing at a
+   public address is mandatory. Behind a reverse proxy you need websocket
+   proxying, otherwise the editor hangs on "listening". HTTPS is required
+5. `chat_member`, reactions and boosts require bot admin rights
 
-### Community-ноды с MTProto
+### Community nodes with MTProto
 
-Если нужен бэкфилл прямо в n8n:
+If you need the backfill inside n8n:
 
-- **`n8n-nodes-telegram-grampro`** — MTProto через teleproto. Есть **Get Chat
-  History**, Read Messages History, фильтры по времени, шифрование сессии,
-  встроенный rate limiting. Самая актуальная
-- **`n8n-nodes-telegram-mtproto`** (veezex) — слушает новые сообщения
-- **`n8n-nodes-telegram-mtproto-client`** — клиент-нода для user-аккаунта
-- **Telepilot** — userbot-нода на TDLib
+- **`n8n-nodes-telegram-grampro`** — MTProto via teleproto. Has **Get Chat
+  History**, Read Messages History, time filters, session encryption, built-in
+  rate limiting. The most current one
+- **`n8n-nodes-telegram-mtproto`** (veezex) — listens for new messages
+- **`n8n-nodes-telegram-mtproto-client`** — a client node for a user account
+- **Telepilot** — a userbot node on TDLib
 
-Все требуют установки community-пакетов на self-hosted и хранения строки сессии
-userbot в credentials — по сути полный доступ к аккаунту лежит в n8n.
+All of them require installing community packages on self-hosted and storing the
+userbot session string in credentials — effectively full access to the account
+sitting in n8n.
 
-## 6. SaaS и бриджи
+## 6. SaaS and bridges
 
-**Все построены на Bot API → истории не умеет ни один.** Модель «форварднул
-сообщение боту → сохранилось».
+**All of them are built on the Bot API → none can do history.** The model is
+"forward a message to the bot → it gets saved".
 
-**Zapier.** Триггер New Message. Ограничения: только ЛС и группы где бот
-добавлен с выключенным privacy; **один бот = один Zap**; **не срабатывает на
-сообщения владельца бота**; дропдаун Chat ID показывает только чаты, активные
-за 24 часа.
+**Zapier.** New Message trigger. Limits: DMs only, plus groups where the bot was
+added with privacy off; **one bot = one Zap**; **doesn't fire on messages from
+the bot's owner**; the Chat ID dropdown only shows chats active in the last
+24 hours.
 
-**Make.com.** То же самое поверх Bot API, гибче по трансформациям, дешевле по
-операциям.
+**Make.com.** Same thing on top of the Bot API, more flexible transforms, cheaper
+per operation.
 
-**Readwise Reader.** Официального TG-бота нет (есть Discord-бот, extension,
-email-inbox). Ходит community `@SaveToReadwiseBot`. Чистый путь — свой бот +
-[Reader API](https://readwise.io/reader_api) (`POST /save`).
+**Readwise Reader.** No official TG bot (there's a Discord bot, an extension, an
+email inbox). A community `@SaveToReadwiseBot` is going around. The clean path is
+your own bot + the [Reader API](https://readwise.io/reader_api) (`POST /save`).
 
-**Raindrop.io.** Официальный путь — **через IFTTT**: пишете `@IFTTT`-боту с
-хештегом `#save`. Своего бота нет. Community
+**Raindrop.io.** The official path is **through IFTTT**: you message the
+`@IFTTT` bot with a `#save` hashtag. No bot of their own. The community
 [OlegWock/raindrop-telegram-bot](https://github.com/OlegWock/raindrop-telegram-bot)
-умер 2024-08-21. Есть нормальный [REST API](https://developer.raindrop.io/) —
-свой мост пишется за вечер.
+died 2024-08-21. There is a decent [REST API](https://developer.raindrop.io/) —
+your own bridge is an evening's work.
 
-**Notion.** Официального бота нет. Только самописные на Notion API либо связка
-через n8n/Make.
+**Notion.** No official bot. Only homegrown ones on the Notion API, or a chain
+through n8n/Make.
 
-## Вывод под задачу
+## Conclusion for this task
 
-1. **Бэкфилл** — Telethon 1.44 с `InputMessagesFilterUrl`. Заодно отдаст полные
-   link previews. 1–2 сек между итерациями, не с основного аккаунта.
-   Быстрая альтернатива без кода — Desktop-экспорт чата в JSON и разбор
-   `text_entities` (но previews дофетчивать самому).
-2. **Непрерывный сбор** — n8n Telegram Trigger + бот-админ.
+1. **Backfill** — Telethon 1.44 with `InputMessagesFilterUrl`. It gives full
+   link previews along the way. 1–2 sec between iterations, not from the main
+   account.
+   The fast no-code alternative is a Desktop export of the chat to JSON and
+   parsing `text_entities` (but then you fetch previews yourself).
+2. **Continuous collection** — n8n Telegram Trigger + the bot as admin.
 
-Держать userbot 24/7 не нужно — бот безопаснее и стабильнее.
+There's no need to keep a userbot running 24/7 — a bot is safer and steadier.

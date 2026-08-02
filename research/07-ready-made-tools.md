@@ -1,78 +1,82 @@
-# Готовые решения: что можно не писать
+# Off-the-shelf solutions: what you don't have to write
 
-Прежде чем строить пайплайн — проверить, не решена ли задача целиком.
+Before building a pipeline, check whether the whole problem is already solved.
 
-## Karakeep — ближайшее попадание
+## Karakeep — the closest hit
 
-Бывший Hoarder. Self-hosted bookmark manager: сохраняет ссылку, сам тянет
-метаданные, сам делает полную копию страницы, сам тегирует через LLM
-(поддерживает Anthropic API), полнотекстовый поиск через Meilisearch,
-OCR картинок.
+Formerly Hoarder. A self-hosted bookmark manager: it saves the link, pulls the
+metadata itself, makes a full copy of the page itself, tags with an LLM itself
+(supports the Anthropic API), full-text search through Meilisearch, OCR on
+images.
 
-То есть шаги 3, 4 и половина 5 из плана — уже написаны и работают.
+Which means steps 3, 4 and half of 5 from the plan are already written and
+working.
 
-Три компонента, которые вместе почти закрывают задачу:
+Three components that together nearly cover the task:
 
-- **Karakeep** — само хранилище + AI-тегирование
-- **karakeepbot** — Telegram-бот, кидаешь ссылку в чат, она уезжает в Karakeep
-- **Karakeep Sync** (плагин Obsidian) — тянет закладки в vault как `.md`
+- **Karakeep** — the storage plus AI tagging
+- **karakeepbot** — a Telegram bot; you drop a link in the chat and it goes to
+  Karakeep
+- **Karakeep Sync** (an Obsidian plugin) — pulls bookmarks into the vault as `.md`
 
-**Что это НЕ решает: бэкфилл истории.** Ни один готовый инструмент не умеет
-«прочитай полтора года чата и разложи». Telethon-скрипт из шага 1 писать
-придётся в любом случае — но дальше можно вливать в Karakeep через его API,
-а не строить свой пайплайн.
+**What it does NOT solve: backfilling the history.** No off-the-shelf tool can
+"read a year and a half of chat and sort it out". You'll have to write the
+Telethon script from step 1 either way — but after that you can pour everything
+into Karakeep through its API instead of building your own pipeline.
 
-Развёртывание — docker compose, нужен Meilisearch рядом. На Fly.io ставится,
-но это уже не «маленькая апка»: несколько контейнеров + том.
+Deployment is docker compose, with Meilisearch alongside. It installs on Fly.io,
+but at that point it isn't a "small app" anymore: several containers plus a
+volume.
 
-**Когда брать:** если ссылок много и нужен именно менеджер закладок с UI, а
-Obsidian — вторичное представление.
-**Когда не брать:** если Obsidian — единственный интерфейс и не хочется
-второй системы, которую надо поддерживать.
+**When to take it:** if there are a lot of links and what you want is a bookmark
+manager with a UI, with Obsidian as a secondary view.
+**When not to:** if Obsidian is the only interface and you don't want a second
+system to maintain.
 
 ## Linkwarden
 
-Тот же класс, конкурент Karakeep. Сильнее в архивации (PDF, скриншот, readable,
-Wayback одновременно), слабее в AI-тегировании. Есть managed-облако. Telegram
-из коробки нет.
+Same class, a Karakeep competitor. Stronger on archiving (PDF, screenshot,
+readable, Wayback all at once), weaker on AI tagging. There's a managed cloud.
+No Telegram out of the box.
 
 ## Raindrop.io
 
-SaaS, бесплатный тариф щедрый, отличный UI и мобильные приложения, есть
-автотегирование и полнотекстовый поиск (в платном). API нормальный.
+SaaS, a generous free tier, a great UI and mobile apps, auto-tagging and
+full-text search (on the paid plan). The API is decent.
 
-Плюс — ноль поддержки. Минус — данные не у вас, в Obsidian надо тянуть
-отдельным скриптом, Telegram-интеграции нет.
+The upside is zero maintenance. The downsides: the data isn't yours, getting it
+into Obsidian needs a separate script, and there's no Telegram integration.
 
-Разумный вариант, если вся затея — «чтобы просто искалось», и Obsidian не
-принципиален.
+A reasonable option if the whole point is "so it's searchable" and Obsidian isn't
+essential.
 
 ## Readwise / Reader
 
-Заточен под чтение статей и highlights, официальная интеграция с Obsidian
-(Readwise Official plugin) — лучшая в классе. Но $8–10/мес, и категоризация
-шмоток с гаджетами — не его задача. Для чата со ссылками на товары мимо.
+Built around reading articles and highlights; the official Obsidian integration
+(the Readwise Official plugin) is best in class. But it's $8–10/mo, and
+categorizing clothes and gadgets isn't its job. For a chat full of product links
+it's off target.
 
-## Что мертво
+## What's dead
 
-- **obsidian-telegram-sync** — плагин, синкавший сообщения Telegram в vault.
-  Репо не обновлялось, работал только с личными сообщениями боту, историю не
-  читал. Не рассчитывать
-- Разнообразные «Telegram to Notion/Obsidian» связки на Zapier/Make — упираются
-  в то же ограничение Bot API: истории нет, только новые сообщения
+- **obsidian-telegram-sync** — a plugin that synced Telegram messages into a
+  vault. The repo hasn't been updated, it only worked with direct messages to the
+  bot and it didn't read history. Don't count on it
+- Assorted "Telegram to Notion/Obsidian" chains on Zapier/Make — they run into
+  the same Bot API limit: no history, only new messages
 
-## Итог
+## Bottom line
 
-| Решение | Бэкфилл истории | Категоризация | Obsidian | Поддержка |
+| Solution | History backfill | Categorization | Obsidian | Maintenance |
 |---|---|---|---|---|
-| Karakeep + karakeepbot + Sync | нет (нужен свой скрипт) | есть, LLM | плагин | docker compose |
-| Linkwarden | нет | слабая | нет | docker compose |
-| Raindrop | нет | есть, платно | свой скрипт | ноль |
-| Свой пайплайн | да | да, как хочется | нативно | всё на вас |
+| Karakeep + karakeepbot + Sync | no (needs your own script) | yes, LLM | plugin | docker compose |
+| Linkwarden | no | weak | no | docker compose |
+| Raindrop | no | yes, paid | your own script | none |
+| Your own pipeline | yes | yes, however you like | native | all on you |
 
-**Рекомендация.** Разведка (шаг 0) в любом случае. Дальше развилка:
+**Recommendation.** Do the recon (step 0) either way. Then it forks:
 
-- Уникальных ссылок **< 500** → свой скрипт, один вечер, никаких Karakeep
-- **500–3000** и нужен только Obsidian → свой пайплайн, он окупается
-- **> 3000** или хочется UI и мобильное приложение → Karakeep, а Telethon-
-  скриптом залить историю через его API
+- Unique links **< 500** → your own script, one evening, no Karakeep
+- **500–3000** and Obsidian is all you need → your own pipeline, it pays off
+- **> 3000**, or you want a UI and a mobile app → Karakeep, and load the history
+  in through its API with the Telethon script

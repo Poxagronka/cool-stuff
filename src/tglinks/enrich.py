@@ -12,15 +12,109 @@ they cost money or a lot of cpu, and cover only a few percent of links.
 
 import asyncio
 import html
+import ipaddress
 import re
+import socket
 from dataclasses import dataclass, field
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 from selectolax.parser import HTMLParser
 
 from . import canon, pagetext, sites
 from .config import HTTP_TIMEOUT
+
+ALLOWED_SCHEMES = ("http", "https")
+REDIRECT_CODES = (301, 302, 303, 307, 308)
+MAX_HOPS = 5
+
+
+class BlockedURL(httpx.TransportError):
+    """A url that points somewhere inside our own network.
+
+    It subclasses httpx's transport error on purpose: as far as the ladder is
+    concerned a blocked link is simply unreachable, and every tier already
+    knows how to degrade on that. Nothing new has to be caught anywhere.
+    """
+
+
+def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    # ::ffff:127.0.0.1 is the same machine wearing a v6 hat, so unwrap first
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    return (
+        ip.is_private  # covers rfc1918, unique-local fc00::/7 and 169.254/16
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+async def _resolve(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """Addresses behind a hostname, without stalling the loop on dns."""
+    loop = asyncio.get_running_loop()
+    infos = await loop.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    # a v6 tuple can carry a zone suffix, and ip_address will not take one
+    return [ipaddress.ip_address(info[4][0].split("%")[0]) for info in infos]
+
+
+async def check_url(url: str) -> None:
+    """Refuse anything that is not a public http(s) destination.
+
+    Saved messages carry whatever the owner sent themselves, including links
+    to the box this runs on. Fetching those would hand an internal page to the
+    triage model, so the check has to sit on the resolved address rather than
+    on the hostname: a public name can point at 127.0.0.1 just as easily.
+    """
+    parts = urlsplit(url)
+    if parts.scheme.lower() not in ALLOWED_SCHEMES:
+        raise BlockedURL(f"scheme not allowed: {url}")
+    host = parts.hostname or ""
+    if not host:
+        raise BlockedURL(f"no host to resolve: {url}")
+    try:
+        addrs = await _resolve(host)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise BlockedURL(f"cannot resolve {host}") from exc
+    # every answer has to be public: one internal address in the set is enough
+    # for a resolver to hand it out on the next lookup
+    if not addrs or any(_is_internal(addr) for addr in addrs):
+        raise BlockedURL(f"internal address behind {host}")
+
+
+class GuardedTransport(httpx.AsyncBaseTransport):
+    """Checks the target of every request the client sends.
+
+    httpx runs each redirect hop back through the transport, so sitting here
+    means the whole chain is covered and no caller has to remember anything.
+    """
+
+    def __init__(self, inner: httpx.AsyncBaseTransport | None = None) -> None:
+        self._inner = inner or httpx.AsyncHTTPTransport()
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        await check_url(str(request.url))
+        return await self._inner.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
+
+
+async def _cffi_get(session, url: str):
+    """curl_cffi with the redirect chain walked by hand, one check per hop."""
+    for _ in range(MAX_HOPS):
+        await check_url(url)
+        resp = await session.get(
+            url, impersonate="chrome", timeout=HTTP_TIMEOUT, allow_redirects=False
+        )
+        location = resp.headers.get("location")
+        if resp.status_code not in REDIRECT_CODES or not location:
+            return resp
+        url = urljoin(url, location)
+    return None
 
 CHROME_HEADERS = {
     "user-agent": (
@@ -222,12 +316,10 @@ async def tier_impersonate(url: str) -> Meta | None:
         return None
     try:
         async with AsyncSession() as session:
-            resp = await session.get(
-                url, impersonate="chrome", timeout=HTTP_TIMEOUT, allow_redirects=True
-            )
+            resp = await _cffi_get(session, url)
     except Exception:
         return None
-    if resp.status_code >= 400 or not resp.text:
+    if resp is None or resp.status_code >= 400 or not resp.text:
         return None
     meta = _from_html(resp.text, url)
     meta.tier, meta.http_status = "curl_cffi", resp.status_code
@@ -249,7 +341,12 @@ async def enrich(url: str, preview: dict | None = None) -> Meta:
 
     limits = httpx.Limits(max_connections=10)
     async with httpx.AsyncClient(
-        follow_redirects=True, timeout=HTTP_TIMEOUT, limits=limits, http2=False
+        follow_redirects=True,
+        timeout=HTTP_TIMEOUT,
+        limits=limits,
+        http2=False,
+        max_redirects=MAX_HOPS,
+        transport=GuardedTransport(httpx.AsyncHTTPTransport(limits=limits)),
     ) as client:
         best = Meta(url=url)
 
@@ -289,10 +386,8 @@ async def body_text(url: str) -> str:
         from curl_cffi.requests import AsyncSession
 
         async with AsyncSession() as session:
-            resp = await session.get(
-                url, impersonate="chrome", timeout=HTTP_TIMEOUT, allow_redirects=True
-            )
-        if resp.status_code < 400:
+            resp = await _cffi_get(session, url)
+        if resp is not None and resp.status_code < 400:
             raw = resp.text
     except Exception:
         raw = ""
@@ -300,7 +395,10 @@ async def body_text(url: str) -> str:
     if not raw:
         try:
             async with httpx.AsyncClient(
-                follow_redirects=True, timeout=HTTP_TIMEOUT
+                follow_redirects=True,
+                timeout=HTTP_TIMEOUT,
+                max_redirects=MAX_HOPS,
+                transport=GuardedTransport(),
             ) as client:
                 resp = await client.get(url, headers=CHROME_HEADERS)
             if resp.status_code < 400:

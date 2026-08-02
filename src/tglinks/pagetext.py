@@ -1,7 +1,7 @@
 """Readable text of a page, for links whose metadata says nothing.
 
 og:title and og:description are usually enough. When they are missing or
-generic ("Приложение из App Store"), the model needs the page itself — but
+generic ("An App Store app"), the model needs the page itself — but
 not the whole page: menus, cookie banners, footers and button labels are
 tokens spent on nothing. This keeps prose and drops chrome.
 """

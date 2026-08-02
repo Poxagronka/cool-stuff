@@ -1,28 +1,39 @@
-# Деплой — правила
+# Deployment — rules
 
-**R1.** У машины Fly корневая ФС эфемерна. Всё, что должно пережить рестарт
-(sqlite, ssh-ключ, клон vault), обязано лежать на томе `[mounts]`.
+**R1.** The root filesystem of a Fly machine is ephemeral. Anything that has to
+survive a restart (sqlite, ssh key, vault clone) must live on a `[mounts]` volume.
 
-**R2.** Доступ на запись в чужой репозиторий давать deploy key, а не
-персональным токеном: ключ ограничен одним репозиторием, токен — всем
-аккаунтом.
+**R2.** Grant write access to someone else's repo with a deploy key, not a
+personal token: the key is scoped to one repository, the token to the whole
+account.
 
-**R3.** Webhook отвечает 200 немедленно, работа уходит в фон. Telegram
-считает медленный ответ ошибкой доставки и повторяет апдейт.
+**R3.** The webhook answers 200 right away and does the work in the background.
+Telegram treats a slow reply as a delivery failure and retries the update.
 
-**R4.** Секреты в `flyctl secrets set` вызывают передеплой машины. Ставить
-пачкой одной командой, а не по одному.
+**R4.** Secrets set via `flyctl secrets set` trigger a machine redeploy. Set them
+all in one command, not one at a time.
 
-**R5.** `[[http_service.checks]]` несовместимы с засыпанием: прокси стучится
-в `/health` раз в минуту, машина никогда не простаивает и `auto_stop_machines`
-не срабатывает. Если приложение должно спать до первого запроса — проверок
-быть не должно.
+**R5.** `[[http_service.checks]]` and sleeping are incompatible: the proxy hits
+`/health` once a minute, the machine is never idle and `auto_stop_machines` never
+fires. If the app should sleep until the first request, there must be no checks.
 
-**R6.** Публичный поиск отвечает из памяти: заметки vault читаются в индекс на
-старте и перечитываются после записи новой. Диск на машине один и тот же, что
-у сборщика, так что второго источника правды нет.
+**R6.** Public search answers from memory: vault notes are read into an index at
+startup and re-read after a new note is written. The machine uses the same disk
+as the collector, so there is no second source of truth.
 
-**R7.** Клон vault на машине односторонний по умолчанию: сборщик из него
-пушит, но ничего не забирает. Всё, что перегенерировано с ноутбука, доедет до
-портала только через `git pull` на старте — он есть в `ensure_clone`, но
-машину после пуша в vault надо перезапустить, иначе индекс остаётся старым.
+**R7.** The vault clone on the machine is one-way by default: the collector
+pushes to it but never pulls. Anything regenerated on the laptop reaches the
+portal only through the `git pull` at startup — it is there in `ensure_clone`,
+but after a push to the vault the machine has to be restarted, otherwise the
+index stays stale.
+
+**R8.** The image carries `src/` and `scripts/`. Anything documented as
+"`flyctl ssh console -C ...`" has to be in it — for a while the invite script
+was not, and the documented command answered "can't open file". Run those with
+an absolute path (`python /app/scripts/invite.py`): `-C` does not go through a
+shell and the working directory is not worth betting on.
+
+**R9.** The app refuses to start without `WEBHOOK_SECRET` and `TG_CHAT`. On fly
+that turns a forgotten secret into a machine that will not boot, which is loud
+and immediate. The alternative — booting with an unauthenticated webhook that
+accepts any chat — fails silently and writes into the vault repo.

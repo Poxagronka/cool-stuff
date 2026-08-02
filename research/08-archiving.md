@@ -1,89 +1,91 @@
-# Архивация страниц: нужна ли она
+# Archiving pages: is it needed
 
-Ссылки из чата гниют. Товар снимается с продажи, статья уезжает за пейволл,
-магазин закрывается. Вопрос — сохранять ли копию страницы, и какой ценой.
+Links from a chat rot. A product goes out of stock, an article moves behind a
+paywall, a shop closes. The question is whether to keep a copy of the page, and
+at what cost.
 
-## Короткий ответ
+## Short answer
 
-Для второго мозга из чата — **достаточно метаданных плюс картинки**. Полная
-архивация каждой страницы стоит непропорционально дорого в дисках и времени, а
-пользуются ей раз в год.
+For a second brain built from a chat, **metadata plus the image is enough**.
+Archiving every page in full costs disproportionately much in disk and time, and
+gets used once a year.
 
-Исключение — статьи (`category: article`). Там текст и есть ценность, и
-`trafilatura` его уже вытащила на шаге обогащения. Класть markdown-текст прямо
-в тело заметки — это и архив, и полнотекстовый поиск одновременно, бесплатно.
+The exception is articles (`category: article`). There the text *is* the value,
+and `trafilatura` already pulled it during enrichment. Putting the markdown text
+straight into the note body gives you the archive and full-text search at once,
+for free.
 
-## Если всё-таки нужны полные копии
+## If you do need full copies
 
 ### monolith
 
-`monolith` 2.10.1 — Rust CLI, собирает страницу в **один самодостаточный
-HTML-файл**: CSS, картинки, шрифты инлайнятся в base64.
+`monolith` 2.10.1 — a Rust CLI that packs a page into **one self-contained HTML
+file**: CSS, images and fonts inlined as base64.
 
 ```bash
 brew install monolith
 monolith -o page.html https://example.com
 ```
 
-Замеры на реальных страницах: типичный результат **0.5–3 МБ** на страницу.
-Товарная карточка с галереей фото уходит в 5–8 МБ.
+Measured on real pages: a typical result is **0.5–3 MB** per page. A product page
+with a photo gallery goes to 5–8 MB.
 
-Плюсы: один файл, открывается в браузере через десять лет, кладётся рядом с
-заметкой в `attachments/`.
-Минусы: JS не исполняется — на SPA (Zara и подобные) получите пустой каркас.
-Для таких нужен рендер браузером.
+Pros: one file, opens in a browser ten years later, sits next to the note in
+`attachments/`.
+Cons: JS isn't executed — on an SPA (Zara and friends) you get an empty shell.
+Those need browser rendering.
 
 ### single-file-cli
 
-`single-file-cli` — та же идея, но через настоящий Chrome, поэтому SPA
-сохраняет корректно. Дороже: тянет headless-браузер, 3–10 секунд на страницу.
+`single-file-cli` — the same idea but through a real Chrome, so it saves SPAs
+correctly. Pricier: it drags in a headless browser, 3–10 seconds per page.
 
-Разумно применять **выборочно**: monolith по умолчанию, single-file для
-доменов, где monolith вернул пустышку.
+The sensible way is **selective**: monolith by default, single-file for the
+domains where monolith came back empty.
 
-### ArchiveBox — пропустить
+### ArchiveBox — skip it
 
-Полноценная система архивации: WARC, PDF, скриншот, DOM, media через yt-dlp,
-свой веб-интерфейс. Мощно и всерьёз.
+A full archiving system: WARC, PDF, screenshot, DOM, media via yt-dlp, its own
+web UI. Powerful and serious.
 
-Для нашей задачи — избыточно. Отдельный сервис с БД и планировщиком, десятки
-гигабайт, и всё ради того, чего вы почти не откроете. Если задача превратится
-в «сохранить всё навсегда» — вернуться к нему.
+For our task it's overkill. A separate service with a database and a scheduler,
+tens of gigabytes, all for something you'll hardly ever open. If the task turns
+into "keep everything forever", come back to it.
 
 ### Wayback Machine
 
-`web.archive.org/save/<url>` — Save Page Now. **Сейчас требует S3-подобные
-ключи** (заводятся в аккаунте archive.org); анонимные сохранения зарезаны
-жёсткими лимитами.
+`web.archive.org/save/<url>` — Save Page Now. **It now requires S3-style keys**
+(created in an archive.org account); anonymous saves are throttled hard.
 
-Смысл в том, что хранит не вы. Записывать URL архивной копии во frontmatter
-(`wayback_url`) — дёшево и надёжнее собственного диска.
+The point is that someone else does the storing. Writing the archive copy's URL
+into frontmatter (`wayback_url`) is cheap and more reliable than your own disk.
 
-Проверять существующую копию — бесплатно и без ключей:
+Checking for an existing copy is free and keyless:
 
 ```
 https://archive.org/wayback/available?url=<url>
 ```
 
-Заполнять это поле стоит для всех ссылок: если копия уже есть, вы получили
-архив бесплатно.
+Worth filling this field in for every link: if a copy already exists, you got the
+archive for free.
 
 ### archive.today
 
-Списать. Агрессивная защита от автоматизации, капчи, нестабильный API,
-периодические блокировки по регионам. Руками — да, в пайплайне — нет.
+Write it off. Aggressive anti-automation, captchas, an unstable API, periodic
+region blocks. By hand yes, in a pipeline no.
 
-## Практическая рекомендация
+## Practical recommendation
 
 ```
-category: article  → markdown-текст в тело заметки (trafilatura, уже есть)
-всё остальное      → og:image локально в attachments/ + wayback_url
-status: dead       → попытаться найти в Wayback, подставить архивную ссылку
+category: article  → markdown text in the note body (trafilatura, already there)
+everything else    → og:image locally in attachments/ + wayback_url
+status: dead       → try to find it in Wayback, put the archive link in
 ```
 
-Картинка локально важна отдельно: `og:image` с магазина протухает вместе с
-товаром, а именно по картинке вещь узнают в карточном представлении Bases.
-Одна картинка — 50–200 КБ, на 2000 ссылок это 100–400 МБ. Приемлемо.
+The local image matters on its own: an `og:image` from a shop goes stale along
+with the product, and the picture is exactly how you recognize a thing in the
+Bases card view. One image is 50–200 KB, so 2000 links means 100–400 MB.
+Acceptable.
 
-Полную архивацию через monolith включать точечно — для тех ссылок, которые
-пометили вручную как важные.
+Turn on full archiving through monolith case by case — for the links you marked
+important by hand.
