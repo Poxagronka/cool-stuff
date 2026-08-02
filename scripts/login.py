@@ -10,6 +10,7 @@ the code request and the sign-in are separate runs with the state on disk.
 
 import argparse
 import asyncio
+import getpass
 import json
 import sys
 from pathlib import Path
@@ -18,6 +19,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 
 from telethon import TelegramClient  # noqa: E402
 from telethon.errors import (  # noqa: E402
+    PasswordHashInvalidError,
     PhoneCodeExpiredError,
     PhoneCodeInvalidError,
     SessionPasswordNeededError,
@@ -57,11 +59,20 @@ async def sign_in(code: str, password: str | None) -> int:
     try:
         await client.sign_in(state["phone"], code, phone_code_hash=state["hash"])
     except SessionPasswordNeededError:
+        # prompt with getpass so the password stays out of the shell history
+        if not password and sys.stdin.isatty():
+            password = getpass.getpass("Облачный пароль (ввод не виден): ")
         if not password:
-            print("Включена двухфакторка. Повтори с --password <пароль>", file=sys.stderr)
+            print("Включена двухфакторка, нужен облачный пароль.", file=sys.stderr)
             await client.disconnect()
             return 2
-        await client.sign_in(password=password)
+        try:
+            await client.sign_in(password=password)
+        except PasswordHashInvalidError:
+            print("Пароль неверный. Код ещё живой, запусти ту же команду снова.",
+                  file=sys.stderr)
+            await client.disconnect()
+            return 1
     except PhoneCodeInvalidError:
         print("Код неверный.", file=sys.stderr)
         await client.disconnect()

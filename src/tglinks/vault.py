@@ -23,11 +23,16 @@ def note_path(root: Path, entry: dict) -> Path:
 
 
 def tg_link(chat_id: int, msg_id: int) -> str:
-    """Deep link to the source message. Private groups drop the -100 prefix."""
+    """Deep link to the source message, empty when no such link can exist.
+
+    Only supergroups and channels have t.me/c/ links, and their ids carry the
+    -100 prefix that has to come off. A basic group id gets no link at all:
+    building one anyway would put a dead url in every note.
+    """
     raw = str(chat_id)
-    if raw.startswith("-100"):
-        raw = raw[4:]
-    return f"https://t.me/c/{raw}/{msg_id}"
+    if not raw.startswith("-100"):
+        return ""
+    return f"https://t.me/c/{raw[4:]}/{msg_id}"
 
 
 def render(entry: dict, context: list[dict]) -> str:
@@ -35,6 +40,9 @@ def render(entry: dict, context: list[dict]) -> str:
         "url": entry["url"],
         "domain": entry["domain"],
         "title": entry.get("title", ""),
+        # duplicated into the body below, but only a property shows up as a
+        # column in bases and in the hover preview
+        "description": entry.get("description", ""),
         "category": entry.get("category", "misc"),
         "tags": entry.get("tags", []),
         "shared_by": entry.get("shared_by", ""),
@@ -90,6 +98,8 @@ views:
     order:
       - file.name
       - category
+      - tags
+      - description
       - domain
       - shared_by
       - shared_at
@@ -102,7 +112,19 @@ views:
     order:
       - file.name
       - category
+      - tags
+      - description
+  - type: table
+    name: По категориям
+    groupBy: category
+    order:
+      - file.name
+      - tags
+      - description
       - domain
+    sort:
+      - property: category
+        direction: ASC
 """
 
 INBOX_BASE = """filters:

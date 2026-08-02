@@ -70,12 +70,18 @@ async def author_of(client, msg, cache: dict) -> str:
     return cache[uid]
 
 
-async def list_chats(client, limit: int = 60) -> None:
-    """Print group dialogs with their ids, so the chat can be picked by name."""
+async def list_chats(client, limit: int | None = None, needle: str = "") -> None:
+    """Print group dialogs with their ids, so the chat can be picked by name.
+
+    Default is every dialog: a small private group can sit far down the list,
+    below hundreds of channels, and a capped listing quietly hides it.
+    """
     print(f"{'id':>16}  {'тип':<8}  название")
     print("-" * 70)
     async for dialog in client.iter_dialogs(limit=limit):
         if not (dialog.is_group or dialog.is_channel):
+            continue
+        if needle and needle.lower() not in (dialog.name or "").lower():
             continue
         kind = "группа" if dialog.is_group else "канал"
         print(f"{dialog.id:>16}  {kind:<8}  {dialog.name}")
@@ -143,16 +149,28 @@ async def process(conn, vault_root, limit):
         "SELECT cluster_id FROM entry WHERE status = 'new' ORDER BY cluster_id LIMIT ?",
         (limit or 1_000_000,),
     ).fetchall()
-    print(f"К обработке: {len(rows)}")
-    for i, row in enumerate(rows, 1):
-        try:
-            path = await pipeline.process_entry(conn, row["cluster_id"], vault_root)
-        except Exception as exc:
-            print(f"  [{i}] ошибка на cluster {row['cluster_id']}: {exc}", file=sys.stderr)
-            continue
-        if path:
-            print(f"  [{i}/{len(rows)}] {path.name}")
-    print("Готово.")
+    print(f"К обработке: {len(rows)}", flush=True)
+
+    # most of the wall clock is network wait, so run a few at a time. sqlite
+    # writes stay safe: asyncio is single threaded and each entry commits once
+    gate = asyncio.Semaphore(4)
+    done = 0
+
+    async def one(i: int, cluster_id: int) -> None:
+        nonlocal done
+        async with gate:
+            try:
+                path = await pipeline.process_entry(conn, cluster_id, vault_root)
+            except Exception as exc:
+                print(f"  [{i}] ошибка на cluster {cluster_id}: {exc}", file=sys.stderr,
+                      flush=True)
+                return
+            done += 1
+            if path:
+                print(f"  [{done}/{len(rows)}] {path.name}", flush=True)
+
+    await asyncio.gather(*(one(i, r["cluster_id"]) for i, r in enumerate(rows, 1)))
+    print(f"Готово: {done} из {len(rows)}.", flush=True)
 
 
 async def main() -> int:
@@ -163,6 +181,7 @@ async def main() -> int:
     ap.add_argument("--process", action="store_true", help="обогатить и записать заметки")
     ap.add_argument("--chat", default=TG_CHAT)
     ap.add_argument("--limit", type=int, default=None)
+    ap.add_argument("--find", default="", help="фильтр по названию для --list-chats")
     args = ap.parse_args()
 
     if not (args.list_chats or args.recon or args.dump or args.process):
@@ -179,23 +198,30 @@ async def main() -> int:
             print("не указан чат: --chat или TG_CHAT в .env", file=sys.stderr)
             return 1
         Path(SESSION).parent.mkdir(parents=True, exist_ok=True)
-        if not sys.stdin.isatty() and not Path(SESSION + ".session").exists():
+        client = TelegramClient(SESSION, TG_API_ID, TG_API_HASH)
+        await client.connect()
+        # a session file appears on the first attempt even if the login never
+        # finished, so ask telegram itself instead of trusting the file
+        if not await client.is_user_authorized():
+            await client.disconnect()
             print(
-                "Первый вход требует ввода номера и кода, а сейчас нет терминала.\n"
-                "Запусти эту же команду в обычном Терминале — сессия сохранится\n"
-                "в data/, и дальше ввод больше не понадобится.",
+                "Вход в Telegram не завершён.\n"
+                "  python scripts/login.py --phone +7...\n"
+                "  python scripts/login.py --code <код из Telegram>",
                 file=sys.stderr,
             )
             return 1
-        async with TelegramClient(SESSION, TG_API_ID, TG_API_HASH) as client:
+        try:
             if args.list_chats:
-                await list_chats(client)
+                await list_chats(client, needle=args.find)
             if args.recon or args.dump:
                 chat = int(args.chat) if args.chat.lstrip("-").isdigit() else args.chat
                 if args.recon:
                     await recon(client, chat, args.limit)
                 if args.dump:
                     await dump(client, chat, args.limit, conn)
+        finally:
+            await client.disconnect()
 
     if args.process:
         await process(conn, vault_root, args.limit)

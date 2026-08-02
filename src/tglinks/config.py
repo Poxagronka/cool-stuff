@@ -38,6 +38,7 @@ CATEGORIES = [
     "software",
     "site",
     "article",
+    "video",
     "food",
     "place",
     "misc",

@@ -22,10 +22,20 @@ from tglinks import canon, db, pipeline, urls, vault  # noqa: E402
         ("https://www.amazon.de/Some-Long-Product-Name/dp/B08N5WRWNW/ref=sr_1_1?keywords=x",
          "https://amazon.de/dp/B08N5WRWNW"),
         ("https://example.com//double///slash", "https://example.com/double/slash"),
+        # telegram marks bare hosts as links, with no scheme at all
+        ("butkus.org", "https://butkus.org/"),
+        ("www.hydrasite.com/", "https://hydrasite.com/"),
+        ("awdee.ru/7-a-m-coffee", "https://awdee.ru/7-a-m-coffee"),
+        ("//example.com/x", "https://example.com/x"),
     ],
 )
 def test_normalise(raw, expected):
     assert canon.normalise(raw) == expected
+
+
+def test_schemeless_link_keeps_its_domain():
+    assert canon.domain("behance.net/gallery/158985815") == "behance.net"
+    assert canon.key("suno.ai") == "suno.ai/"
 
 
 def test_tracking_params_do_not_split_clusters():
@@ -148,6 +158,11 @@ def test_note_filename_strips_illegal_chars(tmp_path):
 
 def test_tg_link_strips_supergroup_prefix():
     assert vault.tg_link(-1001234567890, 42) == "https://t.me/c/1234567890/42"
+
+
+def test_tg_link_empty_for_basic_group():
+    # a basic group has no t.me/c/ link, so anything built would be dead
+    assert vault.tg_link(-4092567497, 1267604) == ""
 
 
 def test_challenge_page_is_not_valid_metadata():
