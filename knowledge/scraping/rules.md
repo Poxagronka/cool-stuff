@@ -69,3 +69,16 @@ not what the link is about. When a rename or a merge leaves an old note behind,
 it is only deleted if the url inside the file matches the entry it is supposed
 to belong to (see R6 — two links can share a stem). The vault is a pushed git
 repo, so refusing to delete is always the cheaper mistake.
+
+**R12.** A note whose title only changed case is not a rename on macOS. The
+filesystem folds case, so `Gnuhr.md` and `GNUHR.md` are one file: the new note
+is written into the old one, the directory keeps the old spelling, and the
+tidy-up in R11 then reads the url out of "the old file", finds its own url and
+deletes what it just saved. A full regeneration lost 19 of 388 notes this way
+before anyone noticed, and nothing complained — the database recorded a
+note_path for every entry, the files were simply not there. So `retire` refuses
+when the path it is about to unlink is `samefile` as the note just written, and
+`write` renames the on-disk entry to the spelling the database is going to
+record. Both checks are worth keeping even though Fly runs Linux: the vault is
+authored and read on a mac. Verify by counting `entry.note_path` against files
+on disk after any bulk run — they must be equal.

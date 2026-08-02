@@ -386,6 +386,6 @@ async def process_entry(conn: sqlite3.Connection, cluster_id: int, vault_root: P
     # replacement is on disk by now, and what is left at the old name is a
     # note nobody links to that search still answers with
     if entry["note_path"] and entry["note_path"] != here:
-        if not vault.retire(vault_root, entry["note_path"], entry["url"]):
+        if not vault.retire(vault_root, entry["note_path"], entry["url"], keeping=path):
             log.info("old note is not provably ours, left alone: %s", entry["note_path"])
     return path

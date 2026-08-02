@@ -377,6 +377,32 @@ def test_a_note_that_is_not_ours_is_left_where_it_is(tmp_path):
     assert not path.exists()
 
 
+def test_the_note_just_written_is_never_the_one_retired(tmp_path):
+    entry = {"domain": "gnuhr.com", "title": "GNUHR", "shared_at": "2025-02-01T10:00:00",
+             "url": "https://gnuhr.com/", "category": "clothing", "tags": []}
+    path = vault.write(tmp_path, entry, [])
+
+    # where the filesystem folds case, the two spellings are one file:
+    # the url inside matches, so the old name would delete the new note
+    assert not vault.retire(tmp_path, str(path.relative_to(tmp_path)),
+                            entry["url"], keeping=path)
+    assert path.exists()
+
+
+def test_a_title_that_only_changed_case_moves_the_file(tmp_path):
+    entry = {"domain": "gnuhr.com", "title": "Gnuhr", "shared_at": "2025-02-01T10:00:00",
+             "url": "https://gnuhr.com/", "category": "clothing", "tags": []}
+    first = vault.write(tmp_path, entry, [])
+
+    entry["title"] = "GNUHR"
+    second = vault.write(tmp_path, entry, [])
+
+    # the database records the new spelling, so that is what has to be on disk
+    assert second.name == "GNUHR.md"
+    assert [p.name for p in second.parent.iterdir()] == ["GNUHR.md"]
+    assert first.name == "Gnuhr.md"
+
+
 def test_context_includes_reply_chain_and_neighbours(tmp_path):
     conn = db.connect(tmp_path / "t.db")
     rows = [

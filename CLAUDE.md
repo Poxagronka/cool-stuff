@@ -57,6 +57,8 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   [knowledge/scraping/rules.md](knowledge/scraping/rules.md) R10
 - Clusters merge on the resolved url; the old note is deleted only when the url
   inside it proves whose it is → same file, R11
+- A title that only changed case is one file on a mac, and deleting the "old"
+  name threw away 19 notes in one run → same file, R12
 - The root filesystem of a Fly machine is ephemeral, state lives on the volume
   only → [knowledge/deployment/rules.md](knowledge/deployment/rules.md) R1
 - Fly health checks keep the machine awake, so there are none → same file, R5

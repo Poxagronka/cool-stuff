@@ -69,7 +69,24 @@ def free_path(root: Path, entry: dict) -> Path:
     return path.with_name(f"{path.stem} {tail}.md")
 
 
-def retire(root: Path, rel_path: str, url: str) -> bool:
+def recase(path: Path) -> None:
+    """Make the name on disk match the name we mean, letter for letter.
+
+    Only does anything where the filesystem folds case, which is every mac and
+    every windows. There a note whose title went from "Gnuhr" to "GNUHR" is
+    written straight into the old file and the old spelling stays in the
+    directory, so the vault and the database disagree about what the note is
+    called from then on.
+    """
+    if not path.parent.is_dir():
+        return
+    for other in path.parent.iterdir():
+        if other.name != path.name and other.name.lower() == path.name.lower():
+            other.rename(path)
+            return
+
+
+def retire(root: Path, rel_path: str, url: str, keeping: Path | None = None) -> bool:
     """Take away a note an entry has moved off, if it is provably that entry's.
 
     A renamed link leaves its old file behind, still indexed and still found
@@ -78,9 +95,17 @@ def retire(root: Path, rel_path: str, url: str) -> bool:
     so the url inside the file is the only proof of whose note it is. The vault
     is a git repo that gets pushed, so a guess here deletes someone's note for
     good; refusing is always the cheaper mistake.
+
+    `keeping` is the note that has just been written. Two names that differ
+    only in case are two names for one file on a mac, so a title recapitalised
+    is a move on paper and nothing at all on disk: the url inside the "old"
+    file is the new note's url, it matches, and the delete takes the note that
+    was just saved. Nineteen of them went that way in one run.
     """
     path = root / rel_path
     if not path.is_file() or url_of(path) != url:
+        return False
+    if keeping is not None and keeping.is_file() and path.samefile(keeping):
         return False
     path.unlink()
     return True
@@ -159,6 +184,7 @@ def render(entry: dict, context: list[dict]) -> str:
 def write(root: Path, entry: dict, context: list[dict]) -> Path:
     path = free_path(root, entry)
     path.parent.mkdir(parents=True, exist_ok=True)
+    recase(path)
     path.write_text(render(entry, context), encoding="utf-8")
     return path
 
