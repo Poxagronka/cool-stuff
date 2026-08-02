@@ -112,16 +112,6 @@ def test_filters_narrow_the_result(root):
     assert index.search("", category="software", tags=["outdoor"])[1] == 0
 
 
-def test_related_tags_come_from_the_current_results(root):
-    """The cloud walks: what is left after picking a tag, minus the tag itself."""
-    index = portal.Index(root)
-    index.load()
-    hits = index.find("", tags=["outdoor"])
-    assert dict(index.related(hits, ["outdoor"])) == {"куртка": 1}
-    # nothing picked yet: the whole vault's tags are on offer
-    assert dict(index.related(index.items, [])) == {"cli": 1, "outdoor": 1, "куртка": 1}
-
-
 def test_keywords_make_the_language_not_matter(tmp_path):
     """A note written in english, looked up with a russian word, and back."""
     vault.write(tmp_path, {
@@ -137,10 +127,9 @@ def test_keywords_make_the_language_not_matter(tmp_path):
     assert index.search("jacket")[1] == 1
 
 
-def test_facets_count_what_is_there(root):
+def test_the_top_tags_count_what_is_there(root):
     index = portal.Index(root)
     index.load()
-    assert dict(index.categories()) == {"clothing": 1, "software": 1}
     assert dict(index.top_tags()) == {"cli": 1, "outdoor": 1, "куртка": 1}
 
 
@@ -190,3 +179,81 @@ def test_a_picked_tag_stays_on_the_web(root):
     web = index.graph(hits, ["outdoor"])
     assert web["picked"] == ["outdoor"]
     assert {n["tag"] for n in web["nodes"]} == {"outdoor", "куртка"}
+
+
+def test_the_web_only_draws_the_biggest_tags(tmp_path):
+    """Every tag at once was unreadable: the bubbles sat on top of each other."""
+    (tmp_path / "links").mkdir()
+    for i in range(30):
+        (tmp_path / "links" / f"{i}.md").write_text(
+            f"---\nurl: https://shop.com/{i}\ndomain: shop.com\ntitle: N{i}\n"
+            # every note carries a tag of its own, and the first ten share one
+            f"shared_at: '2025-02-01'\ntags: [t{i}{', common' if i < 10 else ''}]\n---\n",
+            encoding="utf-8")
+    index = portal.Index(tmp_path)
+    index.load()
+    web = index.graph(index.items, [])
+    assert len(web["nodes"]) == 14
+    # the one tag ten notes share is the biggest, so it leads
+    assert web["nodes"][0] == {"tag": "common", "count": 10}
+
+
+def test_where_a_link_lives_is_not_a_bubble(tmp_path):
+    """"instagram" was the biggest tag in the vault and says nothing at all."""
+    (tmp_path / "links").mkdir()
+    for i in range(6):
+        (tmp_path / "links" / f"{i}.md").write_text(
+            f"---\nurl: https://x.com/{i}\ndomain: x.com\ntitle: N{i}\n"
+            f"shared_at: '2025-02-01'\ntags: [instagram, video, running]\n---\n",
+            encoding="utf-8")
+    index = portal.Index(tmp_path)
+    index.load()
+    assert dict(index.top_tags()) == {"running": 6}
+    web = index.graph(index.items, [])
+    assert [n["tag"] for n in web["nodes"]] == ["running"]
+    # picking one from a card does not put it back either
+    assert index.graph(index.items, ["instagram"])["nodes"] == [
+        {"tag": "running", "count": 6}]
+    # the note still carries them: they are context, just not a way in
+    assert index.items[0].tags == ["instagram", "video", "running"]
+
+
+def test_a_note_carries_its_whole_front_matter_to_the_panel(tmp_path):
+    """The panel is the note, so what it shows has to come out of the index."""
+    (tmp_path / "links").mkdir()
+    (tmp_path / "links" / "a.md").write_text(
+        "---\nurl: https://shop.com/a\ndomain: shop.com\ntitle: A\n"
+        "shared_at: '2025-02-01T10:00:00'\nconfidence: high\n"
+        "keywords: [sampler, groovebox]\n---\n", encoding="utf-8")
+    index = portal.Index(tmp_path)
+    index.load()
+    out = index.items[0].public()
+    assert out["keywords"] == ["sampler", "groovebox"]
+    assert out["confidence"] == "high"
+    assert out["at"] == "2025-02-01T10:00:00"
+    assert out["source"] == "chat"
+    # a keyword still says what the thing is, the way a tag does
+    assert index.search("groovebox")[1] == 1
+
+
+def test_a_vault_that_moved_under_the_process_is_read_again(tmp_path):
+    """A `git pull` on the machine left an afternoon of notes served stale."""
+    (tmp_path / "links").mkdir()
+    note = tmp_path / "links" / "a.md"
+    note.write_text(
+        "---\nurl: https://a.com/1\ndomain: a.com\ntitle: Первый\n"
+        "shared_at: '2025-02-01'\n---\n", encoding="utf-8")
+    index = portal.Index(tmp_path)
+    index.load()
+    assert index.items[0].title == "Первый"
+    # nothing changed, and the walk is not repeated within the half minute
+    assert index.stale() is False
+
+    note.write_text(
+        "---\nurl: https://a.com/1\ndomain: a.com\ntitle: The first one\n"
+        "shared_at: '2025-02-01'\n---\n", encoding="utf-8")
+    index._checked = 0.0
+    assert index.stale() is True
+    index.load()
+    assert index.items[0].title == "The first one"
+    assert index.stale() is False

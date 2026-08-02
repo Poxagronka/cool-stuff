@@ -61,7 +61,7 @@ two orders of magnitude less.
 ## fly.toml for the link collector
 
 ```toml
-app = "tg-links-collector"
+app = "cool-stuff"
 primary_region = "fra"
 
 [build]
@@ -70,7 +70,7 @@ primary_region = "fra"
 [env]
   BOT_MODE = "webhook"
   BOT_PORT = "8443"
-  WEBHOOK_URL = "https://tg-links-collector.fly.dev"
+  WEBHOOK_URL = "https://cool-stuff.fly.dev"
   DB_PATH = "/data/links.db"
 
 [http_service]
@@ -191,7 +191,7 @@ fly launch --no-deploy          # generates fly.toml, fix it by hand
 fly volumes create links_data --region fra --size 1
 fly secrets set TG_BOT_TOKEN=... ANTHROPIC_API_KEY=... GITHUB_TOKEN=...
 fly deploy
-curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://tg-links-collector.fly.dev/webhook"
+curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://cool-stuff.fly.dev/webhook"
 ```
 
 Check that the webhook took:

@@ -14,6 +14,7 @@ is about it, the same brand in someone's aside means it is not.
 """
 
 import re
+import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -24,6 +25,30 @@ from .textsearch import Terms, tokens
 FRONT = re.compile(r"^---\n(.*?)\n---", re.S)
 QUOTE_HEAD = re.compile(r"^>\s*\*\*(.+?)\*\*,\s*(\S*)\s*$")
 
+# where a link lives, and what shape it arrived in. these stay on the note as
+# context, but they are not what anything is about: "instagram" is the biggest
+# tag in the vault and knowing it tells you nothing, so it never becomes a
+# bubble and never reaches the model as a tag worth searching by
+SOURCE_TAGS = frozenset({
+    "aliexpress", "amazon", "app-store", "apple-music", "appstore", "behance",
+    "bluesky", "discord", "dribbble", "etsy", "facebook", "flickr", "github",
+    "gif", "google-play", "image", "instagram", "kickstarter", "linkedin",
+    "medium", "netflix", "patreon", "photo", "pinterest", "podcast", "reddit",
+    "shopify", "snapchat", "soundcloud", "spotify", "substack", "telegram",
+    "threads", "tiktok", "tumblr", "twitch", "twitter", "video", "vimeo", "vk",
+    "whatsapp", "wikipedia", "x", "youtube",
+})
+
+
+def _ranked(items: list["Item"]) -> list[tuple[str, int]]:
+    """Subject tags of these items, biggest first, ties broken by name."""
+    counts: dict[str, int] = {}
+    for item in items:
+        for tag in item.tags:
+            if tag not in SOURCE_TAGS:
+                counts[tag] = counts.get(tag, 0) + 1
+    return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+
 
 @dataclass
 class Item:
@@ -33,6 +58,8 @@ class Item:
     domain: str = ""
     category: str = "misc"
     tags: list[str] = field(default_factory=list)
+    keywords: list[str] = field(default_factory=list)
+    confidence: str = ""
     image: str = ""
     shared_by: str = ""
     shared_at: str = ""
@@ -57,6 +84,13 @@ class Item:
             "date": self.shared_at[:10],
             "dead": self.status == "dead",
             "quotes": self.quotes,
+            # the rest is only read by the panel that opens on a card, and that
+            # panel is the note itself, so it carries the whole front matter
+            "keywords": self.keywords,
+            "confidence": self.confidence,
+            "at": self.shared_at,
+            "source": self.source,
+            "status": self.status,
         }
 
 
@@ -114,6 +148,8 @@ def parse(path: Path) -> Item | None:
         domain=str(data.get("domain") or ""),
         category=str(data.get("category") or "misc"),
         tags=[str(t) for t in tags],
+        keywords=[str(k) for k in keywords],
+        confidence=str(data.get("confidence") or ""),
         image=str(data.get("image") or ""),
         shared_by=str(data.get("shared_by") or ""),
         source=str(data.get("source") or "chat"),
@@ -128,7 +164,7 @@ def parse(path: Path) -> Item | None:
     )):
         item.words.setdefault(word, False)
     for word in tokens(" ".join(
-        [item.title, item.domain, *item.tags, *[str(k) for k in keywords]]
+        [item.title, item.domain, *item.tags, *item.keywords]
     )):
         item.words[word] = True
     return item
@@ -141,8 +177,33 @@ class Index:
         self.root = root
         self.items: list[Item] = []
         self.terms = Terms()
+        self.stamp = (0, 0.0)
+        self._checked = 0.0
+
+    def _shape(self) -> tuple[int, float]:
+        """How many notes there are and when the newest one was written."""
+        times = [p.stat().st_mtime for p in (self.root / "links").rglob("*.md")]
+        return len(times), max(times, default=0.0)
+
+    def stale(self) -> bool:
+        """Have the notes moved on disk since they were read?
+
+        The collector reloads the index itself when it writes a note, so the
+        only way the two drift apart is a vault that changed underneath the
+        process: a `git pull` on the machine, or a rewrite pushed from the
+        laptop. That is how an afternoon of regenerated notes went on being
+        served in their old form. One walk of the tree is cheap, but not on
+        every keystroke, so it is asked at most twice a minute.
+        """
+        now = time.monotonic()
+        if now - self._checked < 30:
+            return False
+        self._checked = now
+        return self._shape() != self.stamp
 
     def load(self) -> int:
+        self.stamp = self._shape()
+        self._checked = time.monotonic()
         found = []
         for path in sorted((self.root / "links").rglob("*.md")):
             item = parse(path)
@@ -157,50 +218,26 @@ class Index:
         self.terms = terms
         return len(found)
 
-    def categories(self) -> list[tuple[str, int]]:
-        counts: dict[str, int] = {}
-        for item in self.items:
-            counts[item.category] = counts.get(item.category, 0) + 1
-        return sorted(counts.items(), key=lambda kv: -kv[1])
-
     def top_tags(self, limit: int = 40) -> list[tuple[str, int]]:
-        counts: dict[str, int] = {}
-        for item in self.items:
-            for tag in item.tags:
-                counts[tag] = counts.get(tag, 0) + 1
-        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-        return ranked[:limit]
-
-    def related(self, items: list[Item], chosen: list[str],
-                limit: int = 40) -> list[tuple[str, int]]:
-        """Tags that keep company with the ones already picked.
-
-        This is what makes the cloud walkable: pick "shoes" and the tags of
-        everything tagged shoes come up — hoka, nike, running — so the next
-        click narrows by something that actually exists in the results.
-        """
-        counts: dict[str, int] = {}
-        for item in items:
-            for tag in item.tags:
-                if tag not in chosen:
-                    counts[tag] = counts.get(tag, 0) + 1
-        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
-        return ranked[:limit]
+        return _ranked(self.items)[:limit]
 
     def graph(self, items: list[Item], chosen: list[str],
-              limit: int = 60) -> dict:
-        """The same tags as a web: who is there, and who hangs next to whom.
+              limit: int = 14) -> dict:
+        """The tags of these items as a web: who is there, and who hangs next
+        to whom.
 
-        `related` answers "what could I pick next" as a flat list, which is all
-        a cloud needs. A graph also needs the lines between them, and those are
-        just the pairs that turn up on the same note. Tags already picked stay
-        in the web — dropping them would cut the path you walked in on.
+        The nodes are the subject tags the current results carry — `SOURCE_TAGS`
+        never makes it in — and the lines are the pairs that turn up on the same
+        note. Tags already picked stay in the web, dropping them would cut the
+        path you walked in on.
+
+        Only the biggest handful. Sixty bubbles in a box this size sat on top
+        of each other and their labels ran together; a dozen is a picture you
+        can read, and picking one of them narrows `items` so the next dozen is
+        drawn from what that tag actually keeps company with.
         """
-        counts: dict[str, int] = {}
-        for item in items:
-            for tag in item.tags:
-                counts[tag] = counts.get(tag, 0) + 1
-        ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+        ranked = _ranked(items)
+        counts = dict(ranked)
         # a picked tag can sit outside the top slice once the results narrow,
         # and a web missing the node you are standing on reads as a bug
         keep = dict(ranked[:limit])

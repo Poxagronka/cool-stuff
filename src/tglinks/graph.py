@@ -1,10 +1,13 @@
-"""The tag web: bubbles floating on threads, drawn on a canvas.
+"""The tag web: the biggest tags as bubbles on threads, drawn on a canvas.
 
 The page interpolates CSS and JS from here. Canvas rather than SVG for two
-reasons: forty-odd nodes redrawn every frame cost nothing, and nothing that
-came off the network is ever parsed as markup — labels go through fillText,
-the fallback list through textContent. Tag strings are written by a model
-reading arbitrary web pages, so they get treated as hostile text.
+reasons: a dozen nodes redrawn while the layout settles cost nothing, and
+nothing that came off the network is ever parsed as markup — labels go through
+fillText, the fallback list through textContent. Tag strings are written by a
+model reading arbitrary web pages, so they get treated as hostile text.
+
+Only the biggest tags are drawn, and once the layout has come to rest it stops
+moving. Sixty bubbles with a wobble on each was a picture nobody could read.
 """
 
 CSS = """
@@ -59,8 +62,8 @@ MARKUP = """
 <section class="web" aria-label="Tag web">
   <div class="webbar">
     <span class="lead">tags</span>
-    <span class="hint">click a bubble to filter, click it again to let it go</span>
-    <button class="webclear" id="webclear" type="button" hidden>clear all</button>
+    <span class="hint">the biggest tags first — pick one and the web shows what goes with it</span>
+    <button class="webclear" id="webclear" type="button" hidden>× reset</button>
   </div>
   <div class="webbox" id="webbox">
     <canvas id="webcv" tabindex="-1"></canvas>
@@ -80,11 +83,13 @@ const Web = (() => {
 
   const nodes = new Map();   // tag -> body. survives refetches so the web keeps its shape
   let links = [], heaviest = 1;
-  let W = 300, H = 260, raf = 0, last = 0, drawn = 0, still = 0, steps = 0, asleep = true;
+  let W = 300, H = 260, raf = 0, last = 0, still = 0, steps = 0, asleep = true;
   // a layout that has not come to rest in this many steps never will, and going
   // on solving it is just a warm laptop
   const BUDGET = 320;
-  let hot = null, grab = null, seq = 0;
+  // grabId is the finger holding the bubble: a second one on the glass must not
+  // steer the first one's drag or end it
+  let hot = null, grab = null, grabId = -1, seq = 0;
   let onPick = () => {}, picked = () => [];
 
   const skin = getComputedStyle(document.documentElement);
@@ -94,7 +99,7 @@ const Web = (() => {
     line: hue("--line-hi", "#34343a"), body: hue("--bubble", "#1c1c21"),
   };
 
-  // a stable per-tag number, so a bubble drifts the same way across refetches
+  // a stable per-tag number, so a bubble is born in the same place every time
   function seed(s) {
     let h = 2166136261;
     for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
@@ -114,7 +119,6 @@ const Web = (() => {
       tag, count: 1, r: 10,
       x: near.x + Math.cos(a) * spread, y: near.y + Math.sin(a) * spread,
       vx: 0, vy: 0,
-      ph: a, fr: 0.22 + seed(tag + "f") * 0.3, am: 2.5 + seed(tag + "a") * 3.5,
     };
   }
 
@@ -136,7 +140,7 @@ const Web = (() => {
       let n = nodes.get(tag);
       if (!n) { n = born(tag, anchor); nodes.set(tag, n); }
       n.count = Math.max(1, raw.count | 0);
-      n.r = 8 + 18 * Math.sqrt(n.count / top);
+      n.r = 14 + 22 * Math.sqrt(n.count / top);
     }
     for (const tag of [...nodes.keys()]) if (!keep.has(tag)) nodes.delete(tag);
     links = (data.edges || [])
@@ -196,9 +200,11 @@ const Web = (() => {
         let d2 = dx * dx + dy * dy;
         if (d2 < 1) { dx = (seed(a.tag) - 0.5) || 0.3; dy = 0.4; d2 = 1; }
         const d = Math.sqrt(d2);
-        // plain inverse-square push, with a hard floor so bubbles never overlap
-        let f = 2600 / d2;
-        const touch = a.r + b.r + 10;
+        // plain inverse-square push, with a floor so bubbles never overlap
+        let f = 3400 / d2;
+        // the label sits under the bubble and is wider than it, so the gap
+        // that keeps circles apart has to keep the words apart as well
+        const touch = a.r + b.r + 34;
         // a soft floor rather than a hard one: stiff enough and the pair just
         // bounces off each other forever instead of coming to rest
         if (d < touch) f += (touch - d) * 0.3;
@@ -224,7 +230,7 @@ const Web = (() => {
       n.vx *= 0.86; n.vy *= 0.86;
       if (grab === n) { n.vx = 0; n.vy = 0; continue; }
       n.x += n.vx * k; n.y += n.vy * k;
-      const pad = n.r + n.am + 10;
+      const pad = n.r + 10;
       n.x = Math.min(W - pad, Math.max(pad, n.x));
       // the label hangs under the bubble and has to stay inside the box too
       n.y = Math.min(H - pad - 16, Math.max(pad, n.y));
@@ -234,20 +240,13 @@ const Web = (() => {
     steps++;
   }
 
-  function at(n, t) {
-    const am = calm.matches || grab === n ? 0 : n.am;
-    return [n.x + Math.sin(t * n.fr + n.ph) * am,
-            n.y + Math.cos(t * n.fr * 0.8 + n.ph) * am];
-  }
-
-  function draw(ts) {
-    const t = calm.matches ? 0 : ts / 1000;
+  function draw() {
     const on = new Set(picked());
     ctx.clearRect(0, 0, W, H);
     const near = hot ? new Set([hot.tag]) : new Set();
 
     for (const [a, b, w] of links) {
-      const [ax, ay] = at(a, t), [bx, by] = at(b, t);
+      const ax = a.x, ay = a.y, bx = b.x, by = b.y;
       const lit = near.has(a.tag) || near.has(b.tag) || on.has(a.tag) || on.has(b.tag);
       ctx.globalAlpha = Math.min(1, (0.12 + 0.3 * (w / heaviest)) * (lit ? 2.2 : 1));
       ctx.strokeStyle = lit ? ink.text : ink.line;
@@ -257,7 +256,7 @@ const Web = (() => {
     ctx.globalAlpha = 1;
 
     for (const n of nodes.values()) {
-      const [x, y] = at(n, t);
+      const x = n.x, y = n.y;
       const isOn = on.has(n.tag), isHot = hot === n;
       ctx.beginPath(); ctx.arc(x, y, n.r, 0, 6.2832);
       ctx.fillStyle = isOn ? ink.text : ink.body;
@@ -265,7 +264,6 @@ const Web = (() => {
       ctx.lineWidth = isHot ? 1.5 : 1;
       ctx.strokeStyle = isOn || isHot ? ink.text : ink.line;
       ctx.stroke();
-      if (n.r < 13 && !isOn && !isHot) continue;
       ctx.fillStyle = isOn ? ink.text : isHot ? ink.text : ink.dim;
       ctx.font = Math.round(10 + n.r * 0.22) + "px ui-sans-serif, -apple-system, sans-serif";
       ctx.textAlign = "center"; ctx.textBaseline = "top";
@@ -277,17 +275,15 @@ const Web = (() => {
     raf = 0;
     if (asleep) return;
     const done = still > 20 || steps >= BUDGET;
-    // once the layout has stopped moving there is nothing left to solve, so the
-    // web only breathes, and it does that at half rate to stay off the battery
-    if (done && ts - drawn < 34) { raf = requestAnimationFrame(frame); return; }
     if (!done) {
       const dt = Math.min(2.5, (ts - last) / 16) || 1;
       last = ts;
       physics(dt);
     }
-    drawn = ts;
-    draw(ts);
-    if (calm.matches && done) { asleep = true; return; }
+    draw();
+    // nothing drifts on its own: once the layout has come to rest the loop
+    // stops dead, and hovering, dragging or picking wakes it for a frame
+    if (done) { asleep = true; return; }
     raf = requestAnimationFrame(frame);
   }
 
@@ -311,20 +307,23 @@ const Web = (() => {
   function find(ev) {
     const rect = cv.getBoundingClientRect();
     const px = ev.clientX - rect.left, py = ev.clientY - rect.top;
-    const t = calm.matches ? 0 : (drawn / 1000);
     let best = null;
     for (const n of nodes.values()) {
-      const [x, y] = at(n, t);
-      if (Math.hypot(px - x, py - y) <= n.r + 4) best = n;
+      if (Math.hypot(px - n.x, py - n.y) <= n.r + 4) best = n;
     }
     return [best, px, py];
   }
 
   cv.addEventListener("pointermove", ev => {
     if (grab) {
+      if (ev.pointerId !== grabId) return;
       const rect = cv.getBoundingClientRect();
       grab.x = ev.clientX - rect.left; grab.y = ev.clientY - rect.top;
-      still = 0;
+      // a layout that has already spent its budget still has to give way to a
+      // bubble being dragged through it, so the solver gets its steps back —
+      // except for someone who asked for no motion, where the one bubble under
+      // the finger moves and the rest of the web stays where it was put
+      if (!calm.matches) { still = 0; steps = 0; }
       wake();
       return;
     }
@@ -340,28 +339,41 @@ const Web = (() => {
     }
   });
 
-  cv.addEventListener("pointerleave", () => {
+  cv.addEventListener("pointerleave", ev => {
+    const lit = hot;
     hot = null; tip.hidden = true;
-    if (grab) grab = null;
+    // only the finger that took the bubble can let go of it: a second one
+    // sliding off the glass was ending someone else's drag
+    if (grab && ev.pointerId === grabId) { grab = null; grabId = -1; }
+    // the highlight is already painted and the loop may have gone to sleep on
+    // top of it, so clearing it has to ask for one more frame
+    if (lit) wake();
   });
 
   cv.addEventListener("pointerdown", ev => {
+    if (grab) return;
     const [n] = find(ev);
     if (!n) return;
-    grab = n;
+    grab = n; grabId = ev.pointerId;
     // a pointer the browser will not hand over is not worth losing the click for
     try { cv.setPointerCapture(ev.pointerId); } catch (err) { /* keep going */ }
-    kick();
+    // taking hold of a bubble is not a reason to solve the layout again: one
+    // frame is enough to draw it lit, and under no-motion kick() would reflow
+    // the whole web around a finger that has not moved yet
+    wake();
   });
 
   cv.addEventListener("pointerup", ev => {
+    if (grab && ev.pointerId !== grabId) return;
     const held = grab;
-    grab = null;
+    grab = null; grabId = -1;
     if (!held) return;
     const [n] = find(ev);
     // a drag that ends on the bubble it started from is still a click
     if (n === held) onPick(held.tag);
-    kick();
+    // the web closes back around the bubble that was let go, unless no motion
+    // was asked for: then it stays exactly where the finger left it
+    if (calm.matches) wake(); else kick();
   });
 
   new ResizeObserver(measure).observe(box);

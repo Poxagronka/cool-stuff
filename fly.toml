@@ -1,4 +1,4 @@
-app = "tg-links-collector"
+app = "cool-stuff"
 primary_region = "fra"
 
 [build]
