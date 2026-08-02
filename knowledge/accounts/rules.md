@@ -50,3 +50,11 @@ giving it.
 **R10.** The first account on a fresh machine has no invite to arrive on, so it
 comes from `scripts/invite.py` run on the box that holds the database. That is
 why `scripts/` is in the docker image and not just in the repo.
+
+**R11.** An account created before passwords existed has an empty `pass_hash`
+and can never sign in — `sign_in` hashes what was typed and compares, and
+nothing hashes to the empty string, so it fails closed rather than open. The
+name is still taken, though: the unique index on `account(name)` is `NOCASE`,
+so the dead row blocks its own owner from re-joining under the same name. Check
+with `scripts/invite.py --who` before minting an invite for somebody who
+already appears there.

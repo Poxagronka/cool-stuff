@@ -106,6 +106,11 @@ Then:
 - install Omnisearch
 - assemble `All Links.base` in the UI, then tidy the YAML by hand
 
+Trap: the note is named after the title, so a better title moves the file — and
+on a mac a title that changed only in case moves nothing at all, because the
+filesystem folds case. After any bulk run, count the note paths in the database
+against the files on disk. They must be equal.
+
 → [research/06-obsidian-vault.md](research/06-obsidian-vault.md)
 
 ## Step 6. Work through the inbox

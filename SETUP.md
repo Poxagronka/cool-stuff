@@ -14,7 +14,7 @@ Everything runs on its own. No manual steps are left.
 | Bot | `@coolstuff_links_bot`, privacy mode off, in the group |
 | Chat | "cool stuff", id `-4092567497` (a plain group, not a supergroup) |
 | Deploy key | on `links-vault` with write access; the private half is in `~/.ssh/tg-links-vault-deploy` and in the Fly secrets |
-| Fly secrets | `ANTHROPIC_API_KEY`, `SSH_KEY`, `VAULT_REPO`, `WEBHOOK_SECRET`, `TG_BOT_TOKEN`, `TG_CHAT` |
+| Fly secrets | `GROQ_API_KEY`, `GEMINI_API_KEY`, `CEREBRAS_API_KEY`, `ANTHROPIC_API_KEY`, `SSH_KEY`, `VAULT_REPO`, `WEBHOOK_SECRET`, `TG_BOT_TOKEN`, `TG_CHAT` |
 | Startup | refuses to boot without `WEBHOOK_SECRET` or `TG_CHAT`: an update is only ours if it came from that chat, and only telegram if it carries that header |
 | Telethon session | `data/backfill.session`, signed in |
 
@@ -110,14 +110,19 @@ the group too.
 
 ## About the cost
 
-Not free, contrary to the original idea — Anthropic instead of a local model
-was a deliberate choice.
+Close to free. Every model call goes through a chain that tries the free
+providers first — Groq, Gemini, Cerebras — and only reaches Anthropic when they
+are out of quota, down, or answer with something that is not a well-formed tool
+call. Regenerating all 388 notes ran on the free half of the chain.
 
 - Fly: `shared-cpu-1x`/512 MB with sleep, plus a 1 GB volume. Pennies a month,
   added to the existing `abooks_bot` bill
-- Anthropic: about $0.002 per link. Working through 388 links of history cost
-  less than a dollar, and it is cents a month after that
+- Groq, Gemini, Cerebras: free daily allowances, no card
+- Anthropic: the fallback, about $0.002 per link when it is used at all
+- Translation: MyMemory, free, under a daily character budget; Haiku only when
+  it comes back with nothing
 - GitHub, Obsidian: free
 
-If going back to zero ever looks attractive: the Anthropic work is isolated in
-`categorize.py`, and swapping in a local model is an edit in one file.
+Falling through to a paid provider is deliberate rather than stingy. A provider
+that answers with nonsense is treated as unavailable, because a bad note stays
+in the vault and one paid request does not.

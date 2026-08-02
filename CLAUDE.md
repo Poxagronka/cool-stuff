@@ -73,6 +73,8 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   browser history → same file, R1
 - Spending an invite and creating the account are one transaction → same file,
   R5
+- An account from before passwords cannot sign in and still holds its name →
+  same file, R11
 - The model in the site search writes no answer, it only calls `search` →
   [knowledge/portal/rules.md](knowledge/portal/rules.md) R1
 - The model's category guess is a hint, not a filter: on zero hits the search
