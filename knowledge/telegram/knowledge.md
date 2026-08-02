@@ -1,40 +1,39 @@
-# Telegram — факты
+# Telegram — facts
 
-Проверено 2026-08-02 на живом чате «cool stuff».
+Verified 2026-08-02 on the live "cool stuff" chat.
 
-## Чат и бот
+## Chat and bot
 
-- Чат «cool stuff» — обычная группа (basic group), id `-4092567497`. Не
-  супергруппа: отсюда отсутствие deep links (см. R4)
-- Бот `@coolstuff_links_bot`, создан через BotFather от имени пользователя
-- Креды MTProto переиспользованы из проекта `abooks_bot`: у одного аккаунта
-  может быть несколько приложений, а api_id/api_hash привязаны к аккаунту,
-  а не к боту
+- The "cool stuff" chat is a plain basic group, id `-4092567497`. Not a
+  supergroup, which is why there are no deep links (see R4)
+- Bot `@coolstuff_links_bot`, created through BotFather from the user account
+- MTProto credentials reused from the `abooks_bot` project: one account can have
+  several apps, and api_id/api_hash are tied to the account, not to the bot
 
-## Объём истории
+## History size
 
-350 сообщений со ссылками, 391 ссылка, 388 уникальных после канонизации,
-213 доменов. Топ: instagram 58, youtube 39, tiktok 16, x 16, apps.apple 9.
+350 messages with links, 391 links, 388 unique after canonicalization, 213
+domains. Top: instagram 58, youtube 39, tiktok 16, x 16, apps.apple 9.
 
-Дедуп срезал всего 3 ссылки из 391. Для дружеского чата, где одно и то же
-кидают редко, тяжёлая машинерия кластеризации почти не окупается — основная
-её польза оказалась в приведении разных форм одного url к одному ключу,
-а не в отлове повторов.
+Dedup cut only 3 links out of 391. In a chat between friends, where the same
+thing is rarely posted twice, heavy clustering machinery barely pays for itself —
+its main value turned out to be mapping different forms of one url to a single
+key, not catching repeats.
 
-## Логин через Telethon без терминала
+## Telethon login without a terminal
 
-Claude Code не даёт TTY, а Telethon зовёт `input()` напрямую. Обходится
-двухшаговым скриптом: `login.py --phone` запоминает `phone_code_hash` в
-`data/login.json`, `login.py --code` завершает вход. Код приходит в Telegram,
-не по SMS.
+Claude Code gives no TTY, and Telethon calls `input()` directly. The workaround is
+a two-step script: `login.py --phone` stores `phone_code_hash` in
+`data/login.json`, `login.py --code` finishes the login. The code arrives in
+Telegram, not by SMS.
 
-При включённой двухфакторке `sign_in(code)` бросает
-`SessionPasswordNeededError`, а не спрашивает пароль. Пароль вводить только
-через getpass, чтобы он не осел в истории shell.
+With two-factor auth on, `sign_in(code)` raises `SessionPasswordNeededError`
+instead of asking for the password. Enter the password only through getpass so it
+does not end up in shell history.
 
-## Создание бота автоматически
+## Creating the bot automatically
 
-BotFather управляется обычными сообщениями от пользовательской сессии, без
-нажатий на кнопки клавиатуры: `/newbot` → имя → username, потом
-`/setprivacy` → `@username` → `Disable`. Добавление бота в basic group —
-`messages.AddChatUserRequest(chat_id=<положительный id>, user_id=<бот>)`.
+BotFather is driven by plain messages from the user session, no keyboard button
+presses: `/newbot` → name → username, then `/setprivacy` → `@username` →
+`Disable`. Adding the bot to a basic group is
+`messages.AddChatUserRequest(chat_id=<positive id>, user_id=<bot>)`.

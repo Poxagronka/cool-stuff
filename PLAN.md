@@ -1,151 +1,162 @@
-# План внедрения
+# Rollout plan
 
-## Шаг 0. Разведка (вечер) — сделать до всего остального
+## Step 0. Recon (one evening) — before anything else
 
-Выгрузить чат Telethon'ом с фильтром `InputMessagesFilterUrl`, посчитать:
+Pull the chat with Telethon using the `InputMessagesFilterUrl` filter and count:
 
-- сколько сообщений со ссылками всего
-- сколько уникальных URL после канонизации
-- топ доменов
-- сколько ссылок уже мертво (быстрый HEAD-прогон)
+- how many messages contain links at all
+- how many unique URLs are left after canonicalisation
+- the top domains
+- how many links are already dead (a quick HEAD run)
 
-**От этого зависит всё дальнейшее.** Если уникальных ссылок 300 — пайплайн не
-нужен, хватит скрипта на вечер и ручного разбора. Если 5000 — есть смысл
-строить.
+**Everything else depends on this.** If there are 300 unique links, no pipeline
+is needed — an evening script and manual sorting will do. If there are 5000,
+building one makes sense.
 
-Понадобится `api_id` / `api_hash` — **они уже есть** в
-`/Users/poxagronka/abooks_bot/.env` (`TG_API_ID`, `TG_API_HASH`). Выданы на
-аккаунт, а не на приложение, так что переиспользуются свободно. Регистрировать
-ничего не надо.
+You need an `api_id` / `api_hash` — **we already have them** in
+`/Users/poxagronka/abooks_bot/.env` (`TG_API_ID`, `TG_API_HASH`). They are
+issued per account, not per app, so they can be reused freely. Nothing to
+register.
 
-## Шаг 1. Бэкфилл истории
+## Step 1. Backfill the history
 
-Telethon 1.44 (с Codeberg, не с GitHub — там архив), `iter_messages` с фильтром
-по URL. Пауза 1–2 секунды между итерациями. Не с основного аккаунта.
+Telethon 1.44 (from Codeberg, not GitHub — that one is an archive),
+`iter_messages` filtered by URL. One or two seconds of pause between
+iterations. Not from the main account.
 
-Сохранять сырьё как есть в SQLite: `raw_url`, `chat_msg_id`, автор, дата,
-текст сообщения, reply_to, `MessageMediaWebPage` если есть.
+Store the raw material as is in SQLite: `raw_url`, `chat_msg_id`, author, date,
+message text, reply_to, `MessageMediaWebPage` if there is one.
 
-**Не нормализовать на этом шаге.** Правила поменяются, ключи придётся
-пересчитывать — нужен нетронутый исходник.
+**Do not normalise at this step.** The rules will change and the keys will have
+to be recomputed, so an untouched original is needed.
 
 → [research/01-telegram-extraction.md](research/01-telegram-extraction.md)
 
-## Шаг 2. Канонизация и дедуп
+## Step 2. Canonicalisation and dedup
 
-Порядок операций жёсткий:
+The order of operations is strict:
 
 ```
-раскрыть ClearURLs redirections (офлайн, без сети)
-  → RFC-нормализация (url-normalize 3.0.0, БЕЗ filter_params)
+expand ClearURLs redirections (offline, no network)
+  → RFC normalisation (url-normalize 3.0.0, WITHOUT filter_params)
   → ClearURLs rules + rawRules
-  → свои канонизаторы (Amazon /dp/ASIN, AliExpress item/<id>.html, YouTube watch?v=)
-  → сортировка параметров (последним шагом!)
+  → our own canonicalisers (Amazon /dp/ASIN, AliExpress item/<id>.html, YouTube watch?v=)
+  → parameter sorting (last step!)
 ```
 
-Затем резолв редиректов с детектором «резолвнулось в голый корень домена =
-провал». Без него все дохлые партнёрки схлопнутся в одну запись.
+Then resolve redirects, with a detector for "resolved to the bare domain root =
+failure". Without it every dead affiliate link collapses into one record.
 
-Три ключа дедупа: `norm_key` / `resolved_key` / `canonical_key`, union-find
-поверх них.
+Three dedup keys: `norm_key` / `resolved_key` / `canonical_key`, with union-find
+on top.
 
 → [research/02-url-canonicalization.md](research/02-url-canonicalization.md)
 
-## Шаг 3. Обогащение метаданными
+## Step 3. Metadata enrichment
 
-Лестница, тиры 2 и 3 гонять параллельно:
+A ladder; run tiers 2 and 3 in parallel:
 
 ```
-0. кеш (в т.ч. негативных результатов, TTL короче)
-1. oEmbed                                       ~$0, покрывает соцсети целиком
-2. httpx + полный набор Chrome-заголовков + обрыв на </head>    ~$0, ~55%
-2b. цепочка UA соцкраулеров                     ~$0, +большой кусок
-3. curl_cffi impersonate="chrome"               ~$0, ~85%  ← остановиться здесь
-4. резидентный прокси                           +копейки
-5. SeleniumBase --uc --cdp                      только JS-шеллы (Zara)
-6. Bright Data Web Unlocker                     те 2-5%, что упрямятся
+0. cache (negative results too, with a shorter TTL)
+1. oEmbed                                       ~$0, covers social networks entirely
+2. httpx + the full set of Chrome headers + cut off at </head>  ~$0, ~55%
+2b. chain of social crawler UAs                 ~$0, +a large chunk
+3. curl_cffi impersonate="chrome"               ~$0, ~85%  ← stop here
+4. residential proxy                            +pennies
+5. SeleniumBase --uc --cdp                      JS shells only (Zara)
+6. Bright Data Web Unlocker                     the 2-5% that keep resisting
 ```
 
-Жёсткий таймкап на URL. Записывать, каким тиром взялся домен, — в следующий
-раз стартовать сразу с него.
+A hard time cap per URL. Record which tier a domain came in on, so next time it
+starts there.
 
-Мёртвые ссылки помечать `status: dead`, **не выбрасывать**: название и
-обсуждение из чата там остаются, и именно по ним потом ищут.
+Mark dead links `status: dead`, **do not throw them away**: the name and the
+chat discussion are still there, and that is what people search by later.
 
 → [research/03-url-metadata.md](research/03-url-metadata.md),
 [research/04-anti-bot.md](research/04-anti-bot.md)
 
-## Шаг 4. Категоризация
+## Step 4. Categorisation
 
-Sonnet 5 через Batch API, structured output со схемой. ~$3 на 2000 ссылок.
+Sonnet 5 through the Batch API, structured output with a schema. ~$3 per 2000
+links.
 
-Контекст для модели: reply-цепочка целиком + сообщения ±5 минут от того же и
-соседних авторов. Без этого «вот ссылка» так и останется без описания.
+Context for the model: the whole reply chain plus messages within ±5 minutes
+from the same and neighbouring authors. Without that, "here's a link" stays
+without a description.
 
-На выходе: `category` (одно значение из 8) + `tags` (свободные) + `description`
-(одно предложение своими словами, не копия og:description).
+Output: `category` (one of 8) + `tags` (free-form) + `description` (one sentence
+in the model's own words, not a copy of og:description).
 
 → [research/05-llm-categorization.md](research/05-llm-categorization.md)
 
-## Шаг 5. Генерация vault
+## Step 5. Generate the vault
 
-Скрипт пишет `.md` прямо в `links/YYYY/`. Obsidian подхватит при старте.
+The script writes `.md` straight into `links/YYYY/`. Obsidian picks it up on
+start.
 
-Имя файла: `2024-11-03 arcteryx — Beta LT Jacket.md`.
+File name: `2024-11-03 arcteryx — Beta LT Jacket.md`.
 
-В тело заметки — **реплики из чата дословно**. Это то, что найдётся, когда
-помнишь «что-то про Норвегию и мембрану», а не название модели.
+Into the body of the note go **the chat lines word for word**. That is what
+turns up when you remember "something about Norway and a membrane" rather than
+the model name.
 
-Затем:
-- отключить Graph view
-- поставить Omnisearch
-- собрать `All Links.base` в UI, потом причесать YAML руками
+Then:
+- turn off Graph view
+- install Omnisearch
+- assemble `All Links.base` in the UI, then tidy the YAML by hand
 
 → [research/06-obsidian-vault.md](research/06-obsidian-vault.md)
 
-## Шаг 6. Разбор инбокса
+## Step 6. Work through the inbox
 
-Отфильтровать `status: inbox` и `category: misc`, пройти пачками. В таблице
-Bases работает multi-select ячеек и вставка по колонке — вечер работы.
+Filter by `status: inbox` and `category: misc` and go in batches. The Bases
+table supports multi-select on cells and pasting down a column — an evening's
+work.
 
-Если в `misc` больше 10% — не хватает категории.
+If `misc` holds more than 10%, a category is missing.
 
-## Шаг 7. Непрерывный сбор — апка на Fly.io
+## Step 7. Continuous collection — the Fly.io app
 
-Один Python-сервис в webhook-режиме: Telegram → парсинг URL → та же лестница
-обогащения → Claude → коммит `.md` в git-репозиторий vault.
+One Python service in webhook mode: Telegram → URL parsing → the same
+enrichment ladder → Claude → commit the `.md` into the vault git repository.
 
-Шаблон копируется из `/Users/poxagronka/abooks_bot` — там рабочий бот на
-Fly.io в webhook-режиме. Урезать VM с `performance-8x` до `shared-cpu-1x` /
-512 МБ и поставить `auto_stop_machines = "suspend"`: машина спит между
-сообщениями, платить практически не за что.
+The template is copied from `/Users/poxagronka/abooks_bot`, which runs a working
+Fly.io bot in webhook mode. Cut the VM from `performance-8x` down to
+`shared-cpu-1x` / 512 MB and set `auto_stop_machines = "suspend"`: the machine
+sleeps between messages and there is practically nothing to pay for.
 
-Делать **после** того, как история уже лежит и схема устоялась.
+Do this **after** the history is in place and the schema has settled.
 
-Грабли:
-- бот должен быть админом ИЛИ с выключенным privacy mode; **после смены
-  privacy бота надо удалить из группы и добавить заново**
-- отдельный бот у BotFather, не переиспользовать токен книжного — один токен
-  = один webhook, старый бот отвалится
-- отвечать на webhook сразу 200, работу в фон; иначе Telegram ретраит и будут
-  дубли
-- `[mounts]` обязателен, иначе SQLite умрёт при первом деплое
-- ловить оба типа сущностей: `url` и `text_link`
+Traps:
+- the bot must be an admin OR have privacy mode off; **after changing privacy
+  the bot has to be removed from the group and added again**
+- a separate bot from BotFather, do not reuse the book bot's token — one token
+  means one webhook, and the old bot will drop off
+- answer the webhook with 200 immediately and do the work in the background,
+  otherwise Telegram retries and you get duplicates
+- `[mounts]` is mandatory, otherwise SQLite dies on the first deploy
+- catch both entity types: `url` and `text_link`
+- the webhook secret proves telegram sent the update, not which chat it came
+  from; check the chat as well, and refuse to start when either is unset —
+  missing config must not mean an open door
+- whatever the ssh console is documented to run has to be inside the image
 
 → [research/09-deployment-flyio.md](research/09-deployment-flyio.md)
 
-## Шаг 8. Через месяц
+## Step 8. A month from now
 
-Smart Connections (локальные эмбеддинги), если полнотекстового поиска не
-хватает. Не раньше — сначала должны накопиться данные.
+Smart Connections (local embeddings), if full-text search turns out not to be
+enough. Not earlier — the data has to pile up first.
 
 ---
 
-## Порядок приоритетов, если времени мало
+## Priority order if time is short
 
-1. Шаг 0 (разведка) — обязательно, определяет всё
-2. Шаг 1 + 5 в минимальном виде: выгрузить и сложить в `.md` без обогащения
-   вообще. Уже лучше, чем поиск по чату.
-3. Дальше по мере надобности
+1. Step 0 (recon) — mandatory, it decides everything
+2. Steps 1 and 5 in their smallest form: pull the messages and drop them into
+   `.md` with no enrichment at all. Already better than searching the chat.
+3. The rest as the need shows up
 
-Худший сценарий — начать строить полный пайплайн, не зная объёма.
+The worst case is starting to build the full pipeline without knowing the
+volume.

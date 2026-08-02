@@ -21,8 +21,9 @@ TG_CHAT = os.getenv("TG_CHAT", "")
 DB_PATH = Path(os.getenv("DB_PATH", "data/links.db"))
 VAULT_PATH = Path(os.getenv("VAULT_PATH", "data/vault"))
 
-ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY", "")
-ANTHROPIC_MODEL = os.getenv("ANTHROPIC_MODEL", "claude-sonnet-5")
+# the model keys are read by llm.py straight from the environment, one per
+# provider, because a chain names its providers by string and nothing here
+# would know which of them a given chain is going to reach for
 
 # vault git remote, used by the fly app to push generated notes.
 VAULT_REPO = os.getenv("VAULT_REPO", "")

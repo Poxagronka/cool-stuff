@@ -1,38 +1,106 @@
 # tg-links-secondbrain
 
-Сборщик ссылок из телеграм-чата «cool stuff» в Obsidian-vault. История
-разобрана разово через Telethon, новые ссылки ловит бот на Fly.io.
+Collects links from the "cool stuff" Telegram chat and from the owner's own
+saved messages into an Obsidian vault. The history was pulled once through
+Telethon; new links are caught by a bot on Fly.io.
 
-## Устройство
+## How it is put together
 
-`src/tglinks/` — пайплайн: `canon` (канонизация url и дедуп) → `enrich`
-(лестница обогащения) → `categorize` (Anthropic) → `vault` (заметки) →
-`gitvault` (push). `app.py` — webhook, `scripts/backfill.py` — разовая
-выгрузка. Подробности в `research/` и `PLAN.md`, состояние среды — в
+`src/tglinks/` is the pipeline: `canon` (url canonicalisation and dedup) →
+`enrich` (the enrichment ladder, `sites` for per-site resolvers, `pagetext` for
+the clean page text) → `triage` (only for privately saved links) → `categorize`
+→ `vault` (notes) → `gitvault` (push). Every model call goes through `llm`: one
+forced tool call, free provider first, Anthropic as the fallback. Everything the
+model writes into the vault — titles, descriptions, keywords — is English; the
+chat quotes keep the language they were said in.
+`app.py` is the webhook and the site (`portal` for the index, `textsearch` for
+the matching, `web` for the page, `graph` for the tag web it draws on a canvas,
+`ask` for turning a question into search words, `translate` for a non-english
+query in the plain search box: the free MyMemory endpoint under a daily
+character budget first, a model only when that finds nothing). The site is
+invite-only: `accounts` (invites, passwords, sessions), `authweb` (the sign-in,
+join and profile pages), and `scripts/invite.py` which mints the first invite on
+the machine. You arrive on an invite link and pick a name and a password; you
+come back through `/signin`. `brand` holds the favicon and the header glyph.
+`scripts/backfill.py` is the one-off dump, `--saved` for Saved Messages.
+Details in `research/` and `PLAN.md`, the state of the environment in
 `SETUP.md`.
 
-## Тропинки, на которые уже наступили
+## Paths already stepped on
 
-- Bot API не видит историю, и это не обходится. Только MTProto →
+- The Bot API cannot see history and there is no way around it. MTProto only →
   [knowledge/telegram/rules.md](knowledge/telegram/rules.md) R1
-- Privacy mode бота отключать ДО добавления в группу, иначе он молчит →
-  там же R2
-- «cool stuff» — обычная группа, а не супергруппа: ссылок `t.me/c/` для неё
-  не существует → там же R4
-- HTTP 200 не значит настоящую страницу: challenge-заглушки приходят с кодом
-  200 и правдоподобным title →
+- Turn the bot's privacy mode off BEFORE adding it to the group, otherwise it
+  stays silent → same file, R2
+- "cool stuff" is a plain group, not a supergroup: `t.me/c/` links do not exist
+  for it → same file, R4
+- HTTP 200 does not mean a real page: challenge stubs come back with a 200 and
+  a plausible title →
   [knowledge/scraping/rules.md](knowledge/scraping/rules.md) R1
-- Выгрузку гонять с ноутбука, не с сервера: датацентровому IP магазины отдают
-  меньше → там же R4
-- Корневая ФС машины Fly эфемерна, состояние только на томе →
-  [knowledge/deployment/rules.md](knowledge/deployment/rules.md) R1
+- Run the dump from the laptop, not the server: shops give a datacentre IP less
+  → same file, R4
+- `accept-encoding: br` without a decompressor breaks everything: the server
+  sends compressed bytes, httpx will not unpack them, metadata comes out empty
+  → same file, R7
+- Instagram/TikTok/Spotify/App Store are only readable through their own
+  endpoints; Pinterest is not readable at all → same file, R8
+- Context stops at the next link, otherwise the description ends up on the
+  wrong thing →
+  [knowledge/telegram/rules.md](knowledge/telegram/rules.md) R8
+- A signed webhook call is not proof of where the update started: a stranger's
+  DM is signed the same way, so the chat is checked too →
+  [knowledge/telegram/rules.md](knowledge/telegram/rules.md) R9
+- Privacy belongs to the message, not the cluster: a link the group also posted
+  publishes only its public half → same file, R10
+- A fetch checks the resolved address on every redirect hop, and a blocked url
+  degrades like an unreachable one →
+  [knowledge/scraping/rules.md](knowledge/scraping/rules.md) R10
+- Clusters merge on the resolved url; the old note is deleted only when the url
+  inside it proves whose it is → same file, R11
+- A title that only changed case is one file on a mac, and deleting the "old"
+  name threw away 19 notes in one run → same file, R12
+- The root filesystem of a Fly machine is ephemeral, state lives on the volume
+  only → [knowledge/deployment/rules.md](knowledge/deployment/rules.md) R1
+- Fly health checks keep the machine awake, so there are none → same file, R5
+- The image ships `scripts/` too, and `ssh console -C` needs an absolute path
+  → same file, R8
+- No `WEBHOOK_SECRET` or `TG_CHAT` means the app will not boot, on purpose →
+  same file, R9
+- The site's door is shut by default, and a new route is protected by not being
+  on the open list → [knowledge/accounts/rules.md](knowledge/accounts/rules.md)
+  R7
+- There is no permanent personal link: it was a bearer token living forever in
+  browser history → same file, R1
+- Spending an invite and creating the account are one transaction → same file,
+  R5
+- The model in the site search writes no answer, it only calls `search` →
+  [knowledge/portal/rules.md](knowledge/portal/rules.md) R1
+- The model's category guess is a hint, not a filter: on zero hits the search
+  runs again without it → same file, R5.2
+- The tag web is a canvas because tag strings are model-written text off the
+  web, and nothing off the web is parsed as markup → same file, R8
+- Every input to the search has a ceiling: the cost is the vocabulary walk
+  behind each word → same file, R9
+- A model asked for an array will sometimes send a comma-separated string.
+  Coercing it is not politeness, discarding it once cost 316 notes their
+  keywords → [knowledge/models/rules.md](knowledge/models/rules.md) R5
+- A provider that answers with anything but a well-formed tool call counts as
+  unavailable and the chain moves on → same file, R2
+- A tool payload is checked against the declared schema first: `{"keep":
+  "false"}` is truthy and would publish a private link → same file, R7
+- Anything built out of the vault goes in the user turn as data, never in the
+  system message → same file, R8
+- The triage gate is the only thing between a saved-messages link and the
+  vault, so no verdict drops the link → same file, R6
+- Which free model can actually do which job, and which ones look free but are
+  not → [knowledge/models/knowledge.md](knowledge/models/knowledge.md)
 
-## Локально
+## Locally
 
 ```
 .venv/bin/python -m pytest tests/ -q
 ruff check src scripts tests
 ```
 
-Комментарии в коде — по-английски и с маленькой буквы (хук проверяет).
-Эмодзи в исходниках только escape-последовательностями.
+Comments in the code are in English and start with a lowercase letter (a hook
+checks this). Emoji in the sources only as escape sequences.

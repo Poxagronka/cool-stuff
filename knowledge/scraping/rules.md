@@ -1,27 +1,84 @@
-# Обогащение метаданных — правила
+# Metadata enrichment — rules
 
-**R1.** HTTP 200 не значит, что страница настоящая. Cloudflare и подобные
-отдают заглушку с кодом 200 и правдоподобным `<title>` вроде «Reddit —
-Please wait for verification». Проверять текст на маркеры challenge-страниц,
-иначе мусор победит в гонке тиров и запишется как валидные метаданные.
+**R1.** HTTP 200 does not mean the page is real. Cloudflare and friends return a
+stub with status 200 and a plausible `<title>` like "Reddit — Please wait for
+verification". Check the text for challenge-page markers, otherwise the garbage
+wins the tier race and gets stored as valid metadata.
 
-**R2.** Читать до `</head>` и обрывать соединение. Средняя страница ~550 КБ,
-средняя голова ~47 КБ: метаданные лежат в первых процентах, остальное —
-чистая трата трафика и времени.
+**R2.** Read up to `</head>` and drop the connection. An average page is ~550 KB,
+an average head ~47 KB: the metadata sits in the first few percent, the rest is
+wasted traffic and time.
 
-**R3.** oEmbed у X, Bluesky и Mastodon не содержит поля `title` — только
-`html` с текстом поста и `author_name`. Наивная проверка «есть title, значит
-получилось» их пропустит.
+**R3.** oEmbed from X, Bluesky and Mastodon has no `title` field — only `html`
+with the post text and `author_name`. A naive "there is a title, so it worked"
+check will skip them.
 
-**R4.** Выгрузку истории гонять с ноутбука, а не с сервера. Домашний IP
-резидентный, магазины отдают ему метаданные там, где датацентровому
-диапазону не отдают.
+**R4.** Run the history backfill from the laptop, not the server. A home IP is
+residential, and the stores hand it metadata they refuse to give a datacenter
+range.
 
-**R5.** Тиры оценивать не по «пришёл ли ответ», а по «пришли ли осмысленные
-метаданные». Тир, вернувший заглушку, обязан проиграть тиру, вернувшему
-настоящий заголовок.
+**R5.** Judge tiers by "did meaningful metadata come back", not by "did a
+response come back". A tier that returned a stub must lose to a tier that
+returned a real title.
 
-**R6.** Имя заметки строится из даты, домена и заголовка, а у ссылок без
-метаданных заголовок родовой. Несколько тиктоков за один день дают одно имя,
-и без проверки занятости последний тихо затирает остальные. Проверять url в
-уже лежащем файле, при чужом — дописывать к имени хвост от хеша url.
+**R6.** A note name is the link title and nothing else: a date and domain at the
+start turn the result list into a column of noise, and they are in the properties
+anyway. Links without metadata get a generic title, so several tiktoks end up with
+the same name — check the url in the file that is already there, and if it belongs
+to another link, append a suffix from the url hash.
+
+**R7.** Do not advertise `accept-encoding: br` (or `zstd`) while httpx cannot
+decompress them. The server trusts the header and sends a compressed body, httpx
+returns it as is, the parser sees binary garbage and the metadata comes out empty.
+This is exactly why instagram and pinterest were considered unreachable for a long
+time. Only `gzip, deflate`.
+
+**R8.** JS-driven sites (Instagram, TikTok, Spotify, App Store) give the crawler
+an empty shell, but each has one public endpoint with a normal response:
+App Store — `itunes.apple.com/lookup?id=`, Instagram — `/p/<code>/embed/captioned/`,
+TikTok — redirect from `vm.tiktok.com` to `www.tiktok.com`, then oembed,
+Spotify — og tags under a crawler UA. Pinterest gives nothing: both the page and
+the internal `PinResource` are closed (403).
+
+**R9.** When there is little metadata (description shorter than ~60 characters),
+pull the whole page text, but not raw HTML: drop script/style/nav/header/footer/
+aside/form/button, take article/main, throw away one- and two-word lines (those
+are menus), and add schema.org JSON-LD and `shortDescription` from the YouTube
+player. Do not fetch an image link (`.jpg`) at all.
+
+**R10.** Every fetch checks where it is actually going, on every redirect hop.
+Saved messages carry whatever the owner sent himself, including links to the
+box this runs on, and following one would hand an internal page to the triage
+model. The check is on the resolved address, not on the hostname — a public
+name can point at 127.0.0.1 — and it refuses loopback, private, link-local,
+reserved, multicast and unspecified, unwrapping `::ffff:127.0.0.1` first,
+because that is the same machine wearing a v6 hat. One internal address
+anywhere in the answer is enough to refuse the lot. httpx runs each hop back
+through the transport, so `GuardedTransport` covers the chain for free;
+curl_cffi does not, so that path walks the redirects by hand. `BlockedURL`
+subclasses httpx's transport error on purpose: a blocked link then degrades
+exactly like an unreachable one and no tier needs new handling.
+
+**R11.** Clusters merge on the resolved url, not only on the normalised one. A
+shortener and the shop behind it are two links until somebody follows them, and
+two clusters with the same title write the same filename — the second wins and
+the first entry points at a note about something else. The oldest cluster keeps
+the id, since that is the one the vault and the index already know. The domain
+shown for the note is recomputed from the resolved url; the shortener's host is
+not what the link is about. When a rename or a merge leaves an old note behind,
+it is only deleted if the url inside the file matches the entry it is supposed
+to belong to (see R6 — two links can share a stem). The vault is a pushed git
+repo, so refusing to delete is always the cheaper mistake.
+
+**R12.** A note whose title only changed case is not a rename on macOS. The
+filesystem folds case, so `Gnuhr.md` and `GNUHR.md` are one file: the new note
+is written into the old one, the directory keeps the old spelling, and the
+tidy-up in R11 then reads the url out of "the old file", finds its own url and
+deletes what it just saved. A full regeneration lost 19 of 388 notes this way
+before anyone noticed, and nothing complained — the database recorded a
+note_path for every entry, the files were simply not there. So `retire` refuses
+when the path it is about to unlink is `samefile` as the note just written, and
+`write` renames the on-disk entry to the spelling the database is going to
+record. Both checks are worth keeping even though Fly runs Linux: the vault is
+authored and read on a mac. Verify by counting `entry.note_path` against files
+on disk after any bulk run — they must be equal.

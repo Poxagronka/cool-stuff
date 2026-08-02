@@ -12,6 +12,9 @@ CREATE TABLE IF NOT EXISTS message (
   text         TEXT,
   reply_to     INTEGER,
   preview_json TEXT,
+  -- said somewhere only the owner can see. a cluster the group also posted
+  -- publishes the public half of its context and leaves this half alone
+  private      INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY (chat_id, msg_id)
 );
 
@@ -27,6 +30,8 @@ CREATE TABLE IF NOT EXISTS link (
   chat_id       INTEGER NOT NULL,
   msg_id        INTEGER NOT NULL,
   first_seen_at TEXT NOT NULL,
+  -- came from somewhere only the owner can see, so it has to earn its way in
+  private       INTEGER NOT NULL DEFAULT 0,
   UNIQUE (chat_id, msg_id, raw_url)
 );
 CREATE INDEX IF NOT EXISTS ix_link_norm ON link(norm_key);
@@ -69,6 +74,32 @@ CREATE TABLE IF NOT EXISTS state (
 """
 
 
+# columns added after the first database went into service. sqlite has no
+# "add column if not absent", so the existing ones are read and compared
+LATER = [
+    ("link", "private", "INTEGER NOT NULL DEFAULT 0"),
+    ("message", "private", "INTEGER NOT NULL DEFAULT 0"),
+]
+
+# what a new column has to be told about the rows that predate it. every one
+# derives its value from data already in the database, so running them on
+# every startup costs a scan and changes nothing the second time
+BACKFILL = [
+    "UPDATE message SET private = 1 WHERE private = 0 AND (chat_id, msg_id) IN"
+    " (SELECT chat_id, msg_id FROM link WHERE private = 1)",
+]
+
+
+def migrate(conn: sqlite3.Connection) -> None:
+    for table, column, decl in LATER:
+        have = {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+        if column not in have:
+            conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {decl}")
+    for sql in BACKFILL:
+        conn.execute(sql)
+    conn.commit()
+
+
 def connect(path: Path) -> sqlite3.Connection:
     path.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(path)
@@ -77,6 +108,7 @@ def connect(path: Path) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA foreign_keys=ON")
     conn.executescript(SCHEMA)
+    migrate(conn)
     return conn
 
 

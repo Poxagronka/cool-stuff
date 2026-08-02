@@ -1,0 +1,391 @@
+"""The tag web: bubbles floating on threads, drawn on a canvas.
+
+The page interpolates CSS and JS from here. Canvas rather than SVG for two
+reasons: forty-odd nodes redrawn every frame cost nothing, and nothing that
+came off the network is ever parsed as markup — labels go through fillText,
+the fallback list through textContent. Tag strings are written by a model
+reading arbitrary web pages, so they get treated as hostile text.
+"""
+
+CSS = """
+  /* ---------- the tag web ---------- */
+  [hidden] { display: none !important; }
+
+  :root { --bubble: #1c1c21; }
+  .web { padding: 0 0 22px; }
+  .webbar {
+    display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px;
+  }
+  .webbar .hint { font-size: 12px; color: var(--dimmer); }
+  .webclear {
+    margin-left: auto; font: inherit; font-size: 12px; color: var(--dim);
+    background: none; border: 0; padding: 2px 4px; cursor: pointer;
+    transition: color .18s var(--ease);
+  }
+  .webclear:hover { color: var(--text); }
+  .webclear:focus-visible { outline: 1px solid var(--text); outline-offset: 2px; }
+  .webbox {
+    position: relative; height: clamp(240px, 38vh, 380px);
+    background: var(--raise); border: 1px solid var(--line); border-radius: 14px;
+    overflow: hidden;
+  }
+  .webbox canvas { display: block; width: 100%; height: 100%; touch-action: none; }
+  .webbox canvas:focus-visible { outline: 1px solid var(--dim); outline-offset: -1px; }
+  .tip {
+    position: absolute; pointer-events: none; z-index: 5;
+    padding: 4px 9px; border-radius: 7px; font-size: 12px; white-space: nowrap;
+    color: var(--text); background: #1b1b1f; border: 1px solid var(--line-hi);
+    font-variant-numeric: tabular-nums;
+  }
+  /* the same graph as a plain list of buttons, for keyboard and screen readers */
+  .sr {
+    position: absolute; left: 0; top: 0; margin: 0; padding: 0; list-style: none;
+    width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%);
+  }
+  .sr:focus-within {
+    width: auto; height: auto; overflow: visible; clip-path: none;
+    display: flex; flex-wrap: wrap; gap: 6px; padding: 10px;
+    background: var(--bg); z-index: 6;
+  }
+  .sr button {
+    font: inherit; font-size: 13px; color: var(--dim); cursor: pointer;
+    background: transparent; border: 1px solid var(--line);
+    border-radius: 999px; padding: 5px 11px;
+  }
+  .sr button[aria-pressed="true"] { color: var(--bg); background: var(--text); }
+"""
+
+MARKUP = """
+<section class="web" aria-label="Tag web">
+  <div class="webbar">
+    <span class="lead">tags</span>
+    <span class="hint">click a bubble to filter, click it again to let it go</span>
+    <button class="webclear" id="webclear" type="button" hidden>clear all</button>
+  </div>
+  <div class="webbox" id="webbox">
+    <canvas id="webcv" tabindex="-1"></canvas>
+    <div class="tip" id="webtip" hidden></div>
+    <ul class="sr" id="weblist"></ul>
+  </div>
+</section>
+"""
+
+JS = """
+// the web has no notion of what is picked. it asks the page every frame, so
+// the drawing and the filter cannot drift apart the way two lists would
+const Web = (() => {
+  const box = $("#webbox"), cv = $("#webcv"), tip = $("#webtip"), list = $("#weblist");
+  const ctx = cv.getContext("2d");
+  const calm = matchMedia("(prefers-reduced-motion: reduce)");
+
+  const nodes = new Map();   // tag -> body. survives refetches so the web keeps its shape
+  let links = [], heaviest = 1;
+  let W = 300, H = 260, raf = 0, last = 0, drawn = 0, still = 0, steps = 0, asleep = true;
+  // a layout that has not come to rest in this many steps never will, and going
+  // on solving it is just a warm laptop
+  const BUDGET = 320;
+  let hot = null, grab = null, seq = 0;
+  let onPick = () => {}, picked = () => [];
+
+  const skin = getComputedStyle(document.documentElement);
+  const hue = (name, fallback) => skin.getPropertyValue(name).trim() || fallback;
+  const ink = {
+    text: hue("--text", "#ededf0"), dim: hue("--dim", "#77777f"),
+    line: hue("--line-hi", "#34343a"), body: hue("--bubble", "#1c1c21"),
+  };
+
+  // a stable per-tag number, so a bubble drifts the same way across refetches
+  function seed(s) {
+    let h = 2166136261;
+    for (let i = 0; i < s.length; i++) { h ^= s.charCodeAt(i); h = Math.imul(h, 16777619); }
+    return (h >>> 0) / 4294967296;
+  }
+
+  // never trust the string: strip control characters, keep it short enough to read
+  function label(s) {
+    let out = "";
+    for (const ch of s) { if (ch.codePointAt(0) > 31) out += ch; if (out.length > 22) break; }
+    return out.length > 22 ? out.slice(0, 21) + "\\u2026" : out;
+  }
+
+  function born(tag, near) {
+    const a = seed(tag) * 6.283, spread = 40 + seed(tag + "r") * 90;
+    return {
+      tag, count: 1, r: 10,
+      x: near.x + Math.cos(a) * spread, y: near.y + Math.sin(a) * spread,
+      vx: 0, vy: 0,
+      ph: a, fr: 0.22 + seed(tag + "f") * 0.3, am: 2.5 + seed(tag + "a") * 3.5,
+    };
+  }
+
+  function apply(data) {
+    const on = new Set(picked());
+    const keep = new Set();
+    const top = Math.max(1, ...data.nodes.map(n => n.count || 1));
+    // new bubbles come in beside what is already picked, not out of the corner
+    const anchor = { x: W / 2, y: H / 2 };
+    const held = [...nodes.values()].filter(n => on.has(n.tag));
+    if (held.length) {
+      anchor.x = held.reduce((s, n) => s + n.x, 0) / held.length;
+      anchor.y = held.reduce((s, n) => s + n.y, 0) / held.length;
+    }
+    for (const raw of data.nodes) {
+      const tag = raw.tag;
+      if (typeof tag !== "string" || !tag) continue;
+      keep.add(tag);
+      let n = nodes.get(tag);
+      if (!n) { n = born(tag, anchor); nodes.set(tag, n); }
+      n.count = Math.max(1, raw.count | 0);
+      n.r = 8 + 18 * Math.sqrt(n.count / top);
+    }
+    for (const tag of [...nodes.keys()]) if (!keep.has(tag)) nodes.delete(tag);
+    links = (data.edges || [])
+      .filter(e => Array.isArray(e) && nodes.has(e[0]) && nodes.has(e[1]))
+      .map(e => [nodes.get(e[0]), nodes.get(e[1]), Math.max(1, e[2] | 0)]);
+    heaviest = Math.max(1, ...links.map(e => e[2]));
+    roster();
+    kick();
+  }
+
+  // the same nodes as buttons. built with the DOM, never with a markup string
+  const buttons = new Map();
+  function roster() {
+    const on = new Set(picked());
+    const want = [...nodes.values()].sort((a, b) => b.count - a.count);
+    const same = want.length === buttons.size && want.every(n => buttons.has(n.tag));
+    // rebuilding on every toggle would throw a keyboard user out of the list,
+    // so when only the picked set moved, the buttons stay where they are
+    if (!same) {
+      buttons.clear();
+      list.replaceChildren(...want.map(n => {
+        const li = document.createElement("li");
+        const b = document.createElement("button");
+        b.type = "button";
+        b.addEventListener("click", () => onPick(n.tag));
+        buttons.set(n.tag, b);
+        li.append(b);
+        return li;
+      }));
+    }
+    for (const n of want) {
+      const b = buttons.get(n.tag);
+      b.textContent = label(n.tag) + " (" + n.count + ")";
+      b.setAttribute("aria-pressed", on.has(n.tag) ? "true" : "false");
+    }
+  }
+
+  function measure() {
+    const rect = box.getBoundingClientRect();
+    W = Math.max(200, rect.width); H = Math.max(180, rect.height);
+    const dpr = Math.min(2, devicePixelRatio || 1);
+    cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    kick();
+  }
+
+  function settle(rounds) { for (let i = 0; i < rounds; i++) physics(1); }
+
+  function physics(k) {
+    const on = new Set(picked());
+    const all = [...nodes.values()];
+    for (let i = 0; i < all.length; i++) {
+      const a = all[i];
+      for (let j = i + 1; j < all.length; j++) {
+        const b = all[j];
+        let dx = b.x - a.x, dy = b.y - a.y;
+        let d2 = dx * dx + dy * dy;
+        if (d2 < 1) { dx = (seed(a.tag) - 0.5) || 0.3; dy = 0.4; d2 = 1; }
+        const d = Math.sqrt(d2);
+        // plain inverse-square push, with a hard floor so bubbles never overlap
+        let f = 2600 / d2;
+        const touch = a.r + b.r + 10;
+        // a soft floor rather than a hard one: stiff enough and the pair just
+        // bounces off each other forever instead of coming to rest
+        if (d < touch) f += (touch - d) * 0.3;
+        const ux = dx / d * f, uy = dy / d * f;
+        a.vx -= ux * k; a.vy -= uy * k; b.vx += ux * k; b.vy += uy * k;
+      }
+    }
+    for (const [a, b, w] of links) {
+      const dx = b.x - a.x, dy = b.y - a.y;
+      const d = Math.hypot(dx, dy) || 1;
+      // the more two tags are said together, the shorter the thread between them
+      const rest = a.r + b.r + 30 + 90 * (1 - w / heaviest);
+      const f = (d - rest) * 0.012 * k;
+      const ux = dx / d * f, uy = dy / d * f;
+      a.vx += ux; a.vy += uy; b.vx -= ux; b.vy -= uy;
+    }
+    let fastest = 0;
+    for (const n of all) {
+      // what is picked sinks to the middle, the rest hangs off it
+      const pull = on.has(n.tag) ? 0.011 : 0.004;
+      n.vx += (W / 2 - n.x) * pull * (H / W) * k;
+      n.vy += (H / 2 - n.y) * pull * k;
+      n.vx *= 0.86; n.vy *= 0.86;
+      if (grab === n) { n.vx = 0; n.vy = 0; continue; }
+      n.x += n.vx * k; n.y += n.vy * k;
+      const pad = n.r + n.am + 10;
+      n.x = Math.min(W - pad, Math.max(pad, n.x));
+      // the label hangs under the bubble and has to stay inside the box too
+      n.y = Math.min(H - pad - 16, Math.max(pad, n.y));
+      fastest = Math.max(fastest, Math.abs(n.vx) + Math.abs(n.vy));
+    }
+    still = fastest < 0.12 ? still + 1 : 0;
+    steps++;
+  }
+
+  function at(n, t) {
+    const am = calm.matches || grab === n ? 0 : n.am;
+    return [n.x + Math.sin(t * n.fr + n.ph) * am,
+            n.y + Math.cos(t * n.fr * 0.8 + n.ph) * am];
+  }
+
+  function draw(ts) {
+    const t = calm.matches ? 0 : ts / 1000;
+    const on = new Set(picked());
+    ctx.clearRect(0, 0, W, H);
+    const near = hot ? new Set([hot.tag]) : new Set();
+
+    for (const [a, b, w] of links) {
+      const [ax, ay] = at(a, t), [bx, by] = at(b, t);
+      const lit = near.has(a.tag) || near.has(b.tag) || on.has(a.tag) || on.has(b.tag);
+      ctx.globalAlpha = Math.min(1, (0.12 + 0.3 * (w / heaviest)) * (lit ? 2.2 : 1));
+      ctx.strokeStyle = lit ? ink.text : ink.line;
+      ctx.lineWidth = 0.6 + 1.1 * (w / heaviest);
+      ctx.beginPath(); ctx.moveTo(ax, ay); ctx.lineTo(bx, by); ctx.stroke();
+    }
+    ctx.globalAlpha = 1;
+
+    for (const n of nodes.values()) {
+      const [x, y] = at(n, t);
+      const isOn = on.has(n.tag), isHot = hot === n;
+      ctx.beginPath(); ctx.arc(x, y, n.r, 0, 6.2832);
+      ctx.fillStyle = isOn ? ink.text : ink.body;
+      ctx.fill();
+      ctx.lineWidth = isHot ? 1.5 : 1;
+      ctx.strokeStyle = isOn || isHot ? ink.text : ink.line;
+      ctx.stroke();
+      if (n.r < 13 && !isOn && !isHot) continue;
+      ctx.fillStyle = isOn ? ink.text : isHot ? ink.text : ink.dim;
+      ctx.font = Math.round(10 + n.r * 0.22) + "px ui-sans-serif, -apple-system, sans-serif";
+      ctx.textAlign = "center"; ctx.textBaseline = "top";
+      ctx.fillText(label(n.tag), x, y + n.r + 7);
+    }
+  }
+
+  function frame(ts) {
+    raf = 0;
+    if (asleep) return;
+    const done = still > 20 || steps >= BUDGET;
+    // once the layout has stopped moving there is nothing left to solve, so the
+    // web only breathes, and it does that at half rate to stay off the battery
+    if (done && ts - drawn < 34) { raf = requestAnimationFrame(frame); return; }
+    if (!done) {
+      const dt = Math.min(2.5, (ts - last) / 16) || 1;
+      last = ts;
+      physics(dt);
+    }
+    drawn = ts;
+    draw(ts);
+    if (calm.matches && done) { asleep = true; return; }
+    raf = requestAnimationFrame(frame);
+  }
+
+  // wake redraws what is already there. kick also tells the solver to run again
+  function wake() {
+    if (!asleep) return;
+    asleep = false; last = 0;
+    if (!raf) raf = requestAnimationFrame(frame);
+  }
+
+  function kick() {
+    still = 0; steps = 0; last = 0; asleep = false;
+    // nothing may drift for someone who asked for no motion, so the layout is
+    // solved here and the loop is handed something finished to draw once
+    if (calm.matches) { settle(400); steps = BUDGET; }
+    if (!raf) raf = requestAnimationFrame(frame);
+  }
+
+  function pause() { asleep = true; if (raf) cancelAnimationFrame(raf); raf = 0; }
+
+  function find(ev) {
+    const rect = cv.getBoundingClientRect();
+    const px = ev.clientX - rect.left, py = ev.clientY - rect.top;
+    const t = calm.matches ? 0 : (drawn / 1000);
+    let best = null;
+    for (const n of nodes.values()) {
+      const [x, y] = at(n, t);
+      if (Math.hypot(px - x, py - y) <= n.r + 4) best = n;
+    }
+    return [best, px, py];
+  }
+
+  cv.addEventListener("pointermove", ev => {
+    if (grab) {
+      const rect = cv.getBoundingClientRect();
+      grab.x = ev.clientX - rect.left; grab.y = ev.clientY - rect.top;
+      still = 0;
+      wake();
+      return;
+    }
+    const [n, px, py] = find(ev);
+    if (n !== hot) { hot = n; wake(); }
+    cv.style.cursor = n ? "pointer" : "default";
+    tip.hidden = !n;
+    if (n) {
+      tip.textContent = label(n.tag) + "  \\u00b7  " + n.count
+        + (n.count === 1 ? " link" : " links");
+      tip.style.left = Math.min(W - 150, px + 14) + "px";
+      tip.style.top = Math.max(4, py - 34) + "px";
+    }
+  });
+
+  cv.addEventListener("pointerleave", () => {
+    hot = null; tip.hidden = true;
+    if (grab) grab = null;
+  });
+
+  cv.addEventListener("pointerdown", ev => {
+    const [n] = find(ev);
+    if (!n) return;
+    grab = n;
+    // a pointer the browser will not hand over is not worth losing the click for
+    try { cv.setPointerCapture(ev.pointerId); } catch (err) { /* keep going */ }
+    kick();
+  });
+
+  cv.addEventListener("pointerup", ev => {
+    const held = grab;
+    grab = null;
+    if (!held) return;
+    const [n] = find(ev);
+    // a drag that ends on the bubble it started from is still a click
+    if (n === held) onPick(held.tag);
+    kick();
+  });
+
+  new ResizeObserver(measure).observe(box);
+  new IntersectionObserver(es => {
+    if (es[0].isIntersecting) wake(); else pause();
+  }, { threshold: 0 }).observe(box);
+  document.addEventListener("visibilitychange", () => {
+    if (document.hidden) pause(); else wake();
+  });
+  calm.addEventListener("change", kick);
+
+  return {
+    start(opts) { onPick = opts.pick; picked = opts.picked; measure(); },
+    // the page calls this the instant a tag is toggled, before any network work,
+    // so letting a tag go is visible immediately
+    repaint() { roster(); kick(); },
+    async pull(params) {
+      const mine = ++seq;
+      let data;
+      try { data = await (await fetch("/api/graph?" + params)).json(); }
+      catch (err) { return; }
+      if (mine !== seq || !data || !Array.isArray(data.nodes)) return;
+      apply(data);
+    },
+  };
+})();
+"""

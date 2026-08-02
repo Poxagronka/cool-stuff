@@ -12,15 +12,109 @@ they cost money or a lot of cpu, and cover only a few percent of links.
 
 import asyncio
 import html
+import ipaddress
 import re
+import socket
 from dataclasses import dataclass, field
-from urllib.parse import quote, urlsplit
+from urllib.parse import quote, urljoin, urlsplit
 
 import httpx
 from selectolax.parser import HTMLParser
 
-from . import canon
+from . import canon, pagetext, sites
 from .config import HTTP_TIMEOUT
+
+ALLOWED_SCHEMES = ("http", "https")
+REDIRECT_CODES = (301, 302, 303, 307, 308)
+MAX_HOPS = 5
+
+
+class BlockedURL(httpx.TransportError):
+    """A url that points somewhere inside our own network.
+
+    It subclasses httpx's transport error on purpose: as far as the ladder is
+    concerned a blocked link is simply unreachable, and every tier already
+    knows how to degrade on that. Nothing new has to be caught anywhere.
+    """
+
+
+def _is_internal(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    # ::ffff:127.0.0.1 is the same machine wearing a v6 hat, so unwrap first
+    mapped = getattr(ip, "ipv4_mapped", None)
+    if mapped is not None:
+        ip = mapped
+    return (
+        ip.is_private  # covers rfc1918, unique-local fc00::/7 and 169.254/16
+        or ip.is_loopback
+        or ip.is_link_local
+        or ip.is_reserved
+        or ip.is_multicast
+        or ip.is_unspecified
+    )
+
+
+async def _resolve(host: str) -> list[ipaddress.IPv4Address | ipaddress.IPv6Address]:
+    """Addresses behind a hostname, without stalling the loop on dns."""
+    loop = asyncio.get_running_loop()
+    infos = await loop.getaddrinfo(host, None, type=socket.SOCK_STREAM)
+    # a v6 tuple can carry a zone suffix, and ip_address will not take one
+    return [ipaddress.ip_address(info[4][0].split("%")[0]) for info in infos]
+
+
+async def check_url(url: str) -> None:
+    """Refuse anything that is not a public http(s) destination.
+
+    Saved messages carry whatever the owner sent themselves, including links
+    to the box this runs on. Fetching those would hand an internal page to the
+    triage model, so the check has to sit on the resolved address rather than
+    on the hostname: a public name can point at 127.0.0.1 just as easily.
+    """
+    parts = urlsplit(url)
+    if parts.scheme.lower() not in ALLOWED_SCHEMES:
+        raise BlockedURL(f"scheme not allowed: {url}")
+    host = parts.hostname or ""
+    if not host:
+        raise BlockedURL(f"no host to resolve: {url}")
+    try:
+        addrs = await _resolve(host)
+    except (OSError, UnicodeError, ValueError) as exc:
+        raise BlockedURL(f"cannot resolve {host}") from exc
+    # every answer has to be public: one internal address in the set is enough
+    # for a resolver to hand it out on the next lookup
+    if not addrs or any(_is_internal(addr) for addr in addrs):
+        raise BlockedURL(f"internal address behind {host}")
+
+
+class GuardedTransport(httpx.AsyncBaseTransport):
+    """Checks the target of every request the client sends.
+
+    httpx runs each redirect hop back through the transport, so sitting here
+    means the whole chain is covered and no caller has to remember anything.
+    """
+
+    def __init__(self, inner: httpx.AsyncBaseTransport | None = None) -> None:
+        self._inner = inner or httpx.AsyncHTTPTransport()
+
+    async def handle_async_request(self, request: httpx.Request) -> httpx.Response:
+        await check_url(str(request.url))
+        return await self._inner.handle_async_request(request)
+
+    async def aclose(self) -> None:
+        await self._inner.aclose()
+
+
+async def _cffi_get(session, url: str):
+    """curl_cffi with the redirect chain walked by hand, one check per hop."""
+    for _ in range(MAX_HOPS):
+        await check_url(url)
+        resp = await session.get(
+            url, impersonate="chrome", timeout=HTTP_TIMEOUT, allow_redirects=False
+        )
+        location = resp.headers.get("location")
+        if resp.status_code not in REDIRECT_CODES or not location:
+            return resp
+        url = urljoin(url, location)
+    return None
 
 CHROME_HEADERS = {
     "user-agent": (
@@ -29,7 +123,10 @@ CHROME_HEADERS = {
     ),
     "accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,*/*;q=0.8",
     "accept-language": "en-US,en;q=0.9,ru;q=0.8",
-    "accept-encoding": "gzip, deflate, br",
+    # no br or zstd: httpx cannot decompress either without extra packages,
+    # and the server takes us at our word — the body comes back as binary mush
+    # that parses into empty metadata
+    "accept-encoding": "gzip, deflate",
     "sec-ch-ua": '"Chromium";v="146", "Google Chrome";v="146", "Not?A_Brand";v="24"',
     "sec-ch-ua-mobile": "?0",
     "sec-ch-ua-platform": '"macOS"',
@@ -165,6 +262,24 @@ async def tier_oembed(client: httpx.AsyncClient, url: str) -> Meta | None:
     )
 
 
+async def tier_site(client: httpx.AsyncClient, url: str) -> Meta | None:
+    """Sites with a known public endpoint, resolved before the generic ladder."""
+    found = await sites.probe(client, url)
+    if not found:
+        return None
+    return Meta(
+        url=url,
+        title=found.get("title", ""),
+        description=found.get("description", ""),
+        image=found.get("image", ""),
+        site_name=found.get("site_name", ""),
+        price=found.get("price", ""),
+        tier="site",
+        http_status=200,
+        fields={"page_text": found.get("text", "")},
+    )
+
+
 async def tier_chrome(client: httpx.AsyncClient, url: str) -> Meta | None:
     try:
         status, html = await _fetch_head(client, url, CHROME_HEADERS)
@@ -201,12 +316,10 @@ async def tier_impersonate(url: str) -> Meta | None:
         return None
     try:
         async with AsyncSession() as session:
-            resp = await session.get(
-                url, impersonate="chrome", timeout=HTTP_TIMEOUT, allow_redirects=True
-            )
+            resp = await _cffi_get(session, url)
     except Exception:
         return None
-    if resp.status_code >= 400 or not resp.text:
+    if resp is None or resp.status_code >= 400 or not resp.text:
         return None
     meta = _from_html(resp.text, url)
     meta.tier, meta.http_status = "curl_cffi", resp.status_code
@@ -228,9 +341,18 @@ async def enrich(url: str, preview: dict | None = None) -> Meta:
 
     limits = httpx.Limits(max_connections=10)
     async with httpx.AsyncClient(
-        follow_redirects=True, timeout=HTTP_TIMEOUT, limits=limits, http2=False
+        follow_redirects=True,
+        timeout=HTTP_TIMEOUT,
+        limits=limits,
+        http2=False,
+        max_redirects=MAX_HOPS,
+        transport=GuardedTransport(httpx.AsyncHTTPTransport(limits=limits)),
     ) as client:
         best = Meta(url=url)
+
+        meta = await tier_site(client, url)
+        if meta and meta.ok():
+            return meta
 
         meta = await tier_oembed(client, url)
         if meta and meta.ok():
@@ -251,6 +373,46 @@ async def enrich(url: str, preview: dict | None = None) -> Meta:
     if meta and meta.ok():
         return meta
     return best
+
+
+async def body_text(url: str) -> str:
+    """Readable text of the page, for links whose metadata says nothing.
+
+    Deliberately outside the ladder: the ladder stops at </head>, this asks
+    for the whole document, so it only runs when the head turned out empty.
+    """
+    raw = ""
+    try:
+        from curl_cffi.requests import AsyncSession
+
+        async with AsyncSession() as session:
+            resp = await _cffi_get(session, url)
+        if resp is not None and resp.status_code < 400:
+            raw = resp.text
+    except Exception:
+        raw = ""
+
+    if not raw:
+        try:
+            async with httpx.AsyncClient(
+                follow_redirects=True,
+                timeout=HTTP_TIMEOUT,
+                max_redirects=MAX_HOPS,
+                transport=GuardedTransport(),
+            ) as client:
+                resp = await client.get(url, headers=CHROME_HEADERS)
+            if resp.status_code < 400:
+                raw = resp.text
+        except httpx.HTTPError:
+            return ""
+
+    if not raw or BLOCKED_MARKERS.search(raw[:4000]):
+        return ""
+    # a link straight to a jpeg decodes into replacement characters, and those
+    # would go to the model as if they were text
+    if raw[:2000].count("�") > 20 or "<" not in raw[:2000]:
+        return ""
+    return pagetext.extract(raw)
 
 
 def final_url(url: str, meta: Meta) -> str:
