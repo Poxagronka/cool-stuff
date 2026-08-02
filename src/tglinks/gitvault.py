@@ -70,6 +70,12 @@ async def ensure_clone(root: Path, repo_url: str, token: str) -> bool:
         code, out = await _git(root, "remote", "set-url", "origin", remote)
         if code:
             log.warning("git remote set-url failed: %s", out)
+        # notes edited elsewhere (a regeneration run on a laptop) only reach the
+        # machine through a pull. failing here is not fatal: the clone on disk
+        # is still a working vault
+        code, out = await _git(root, "pull", "--ff-only")
+        if code:
+            log.warning("git pull failed: %s", out)
         return True
 
     root.parent.mkdir(parents=True, exist_ok=True)
