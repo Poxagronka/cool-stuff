@@ -6,10 +6,10 @@ Everything runs on its own. No manual steps are left.
 
 | What | Where |
 |---|---|
-| Pipeline repository | `github.com/Poxagronka/tg-links-secondbrain` (private) |
+| Pipeline repository | `github.com/Poxagronka/cool-stuff` (private) |
 | Vault repository | `github.com/Poxagronka/links-vault` (private) |
 | Local vault | `~/links-vault` |
-| App on Fly | `tg-links-collector.fly.dev`, region fra |
+| App on Fly | `cool-stuff.fly.dev`, region fra |
 | Volume | `links_data`, 1 GB, fra |
 | Bot | `@coolstuff_links_bot`, privacy mode off, in the group |
 | Chat | "cool stuff", id `-4092567497` (a plain group, not a supergroup) |
@@ -43,17 +43,28 @@ page, five unused at a time.
 The first invite on a fresh machine comes from the command line:
 
 ```
-flyctl ssh console -a tg-links-collector -C "python /app/scripts/invite.py"
-flyctl ssh console -a tg-links-collector -C "python /app/scripts/invite.py --who"
+flyctl ssh console -a cool-stuff -C "python /app/scripts/invite.py"
+flyctl ssh console -a cool-stuff -C "python /app/scripts/invite.py --who"
 ```
 
 Absolute path on purpose: `-C` does not run through a shell.
 
 Search on the site takes plain questions. A question that is not in English
 goes through the free MyMemory endpoint first, under a daily character budget,
-and only reaches Haiku when that comes back with nothing. Above the results is
-the tag web — the tags of whatever is currently on screen, drawn as bubbles on
-threads that drift about; clicking one filters by it.
+and only reaches Haiku when that comes back with nothing.
+
+Above the results is the tag web: the fourteen biggest tags of whatever is
+currently on screen, drawn as bubbles on threads. It settles and then holds
+still. Clicking one filters by it, which narrows the results, which redraws the
+web from what that tag keeps company with — so the next fourteen bubbles are
+its neighbours rather than the whole vault again. The button on the right puts
+everything back. Tags naming where a link lives — instagram, youtube, tiktok
+and the rest — never become bubbles; they stay on the note as context.
+
+A card shows the summary. The small chip with the domain and an arrow is the
+only thing that leaves for the site; clicking anywhere else on the card opens
+the note itself — the front matter as a table, the description and every chat
+quote, the way it looks in Obsidian. Escape closes it.
 
 Everything written into the vault — titles, descriptions, keywords — is
 English. The chat quotes stay in whatever language they were said in.
@@ -70,9 +81,9 @@ a separate thing built from the same property.
 ## Maintenance
 
 ```
-flyctl logs -a tg-links-collector          # what is going on
-flyctl status -a tg-links-collector        # is the machine asleep
-curl https://tg-links-collector.fly.dev/health
+flyctl logs -a cool-stuff          # what is going on
+flyctl status -a cool-stuff        # is the machine asleep
+curl https://cool-stuff.fly.dev/health
 ```
 
 The machine runs with `auto_stop_machines = "suspend"`: it sleeps between

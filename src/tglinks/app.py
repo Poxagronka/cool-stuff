@@ -26,7 +26,7 @@ log = logging.getLogger("tglinks")
 # telegram signs webhook calls with this header when setWebhook set a secret
 SECRET = os.getenv("WEBHOOK_SECRET", "")
 
-app = FastAPI(title="tg-links-collector")
+app = FastAPI(title="cool-stuff")
 _lock = asyncio.Lock()
 _asker = ask.Asker()
 _limiter = ask.Limiter()
@@ -218,10 +218,12 @@ async def favicon() -> Response:
     )
 
 
-@app.get("/api/facets")
-async def facets() -> dict:
+def live_index() -> portal.Index:
+    """The index, re-read first if the vault moved under the process."""
     index = app.state.index
-    return {"categories": index.categories(), "tags": index.top_tags()}
+    if index.stale():
+        log.info("the vault moved on disk: %s notes", index.load())
+    return index
 
 
 @app.get("/api/search")
@@ -229,26 +231,13 @@ async def search(
     q: str = "", category: str = "", tag: list[str] = Query(default=[]),
     offset: int = 0, limit: int = 60,
 ) -> dict:
-    """Results plus the tags they carry, which is what the cloud walks on."""
-    index = app.state.index
+    """The results and the total, which is all the grid needs."""
+    index = live_index()
     picked = [t for t in tag if t][:8]
     hits = index.find(q, category, picked)
     start = max(0, offset)
     page = hits[start:start + min(120, max(1, limit))]
-    return {
-        "items": [i.public() for i in page],
-        "total": len(hits),
-        "related": index.related(hits, picked),
-        "categories": counted(hits),
-    }
-
-
-def counted(items: list[portal.Item]) -> list[tuple[str, int]]:
-    """Category counts within the current result set."""
-    counts: dict[str, int] = {}
-    for item in items:
-        counts[item.category] = counts.get(item.category, 0) + 1
-    return sorted(counts.items(), key=lambda kv: -kv[1])
+    return {"items": [i.public() for i in page], "total": len(hits)}
 
 
 @app.get("/api/graph")
@@ -256,7 +245,7 @@ async def graph(
     q: str = "", category: str = "", tag: list[str] = Query(default=[]),
 ) -> dict:
     """The tags of the current results as a web: the dots and the lines."""
-    index = app.state.index
+    index = live_index()
     picked = [t for t in tag if t][:8]
     return index.graph(index.find(q, category, picked), picked)
 
@@ -270,7 +259,7 @@ async def ask_endpoint(request: Request) -> dict:
     if not await _limiter.allow(who, asyncio.get_running_loop().time()):
         raise HTTPException(status_code=429, detail="too many questions, wait a minute")
 
-    index = app.state.index
+    index = live_index()
     # the cheap path first: a plain translation costs nothing and answers most
     # of what people type. haiku is only worth it when that finds nothing
     if translate.foreign(question):
@@ -283,15 +272,13 @@ async def ask_endpoint(request: Request) -> dict:
                     "plan": plan,
                     "items": [i.public() for i in hits[:60]],
                     "total": len(hits),
-                    "related": index.related(hits, []),
-                    "categories": counted(hits),
                 }
 
     plan = await _asker.plan(question, index.top_tags(60))
     if not any((plan["query"], plan["category"], plan["tag"])):
         # the model refused the question. an empty query would list the whole
         # vault, and that reads as if the refusal had been ignored
-        return {"plan": plan, "items": [], "total": 0, "related": [], "categories": []}
+        return {"plan": plan, "items": [], "total": 0}
     picked = [plan["tag"]] if plan["tag"] else []
     hits = index.find(plan["query"], plan["category"], picked, mode="any")
     if not hits and (plan["category"] or picked):
@@ -301,13 +288,7 @@ async def ask_endpoint(request: Request) -> dict:
         plan = {**plan, "category": "", "tag": ""}
         picked = []
         hits = index.find(plan["query"], mode="any")
-    return {
-        "plan": plan,
-        "items": [i.public() for i in hits[:60]],
-        "total": len(hits),
-        "related": index.related(hits, picked),
-        "categories": counted(hits),
-    }
+    return {"plan": plan, "items": [i.public() for i in hits[:60]], "total": len(hits)}
 
 
 @app.get("/health")

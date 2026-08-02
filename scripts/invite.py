@@ -4,7 +4,7 @@ The site is invite-only and invites come from accounts, which leaves the first
 account with no way in. This is that way in: run it on the machine that holds
 the database and open the link it prints.
 
-    flyctl ssh console -a tg-links-collector -C "python scripts/invite.py"
+    flyctl ssh console -a cool-stuff -C "python scripts/invite.py"
 
 It can also list who is already inside:
 
@@ -20,7 +20,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent / "src"))
 from tglinks import accounts, db  # noqa: E402
 from tglinks.config import DB_PATH  # noqa: E402
 
-DEFAULT_SITE = "https://tg-links-collector.fly.dev"
+DEFAULT_SITE = "https://cool-stuff.fly.dev"
 
 
 def main() -> int:

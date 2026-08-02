@@ -1,6 +1,6 @@
 """The public page. One file, no build step, no framework."""
 
-from . import brand, graph
+from . import brand, graph, sheet
 
 _PAGE = """<!doctype html>
 <html lang="en">
@@ -110,6 +110,7 @@ _PAGE = """<!doctype html>
   }
   .pill {
     --pad: 5px 11px;
+    font-family: inherit;
     padding: var(--pad); border-radius: 999px; cursor: pointer;
     font-size: 13px; line-height: 1.3; color: var(--dim);
     background: transparent; border: 1px solid var(--line);
@@ -123,9 +124,9 @@ _PAGE = """<!doctype html>
     color: var(--bg); background: var(--text); border-color: var(--text);
   }
   .pill.on::after { content: "×"; margin-left: 7px; opacity: .55; }
-  .pill n { font-variant-numeric: tabular-nums; opacity: .5; margin-left: 6px; }
 
 {graph_css}
+{sheet_css}
   /* ---------- results ---------- */
   main { padding: 22px 0 0; }
   .grid {
@@ -135,7 +136,7 @@ _PAGE = """<!doctype html>
   .card {
     position: relative; display: flex; flex-direction: column; overflow: hidden;
     background: var(--raise); border: 1px solid var(--line); border-radius: 14px;
-    text-decoration: none; color: inherit;
+    text-decoration: none; color: inherit; cursor: pointer;
     animation: rise .34s var(--ease) both;
     animation-delay: calc(var(--i) * 18ms);
     transition: border-color .2s var(--ease), transform .2s var(--ease),
@@ -144,7 +145,6 @@ _PAGE = """<!doctype html>
   .card:hover {
     border-color: var(--line-hi); background: #16161a; transform: translateY(-2px);
   }
-  .card:focus-visible { outline: 1px solid var(--text); outline-offset: 2px; }
   .card.dead { opacity: .4; }
   .card.dead:hover { opacity: .7; }
   @keyframes rise {
@@ -158,7 +158,14 @@ _PAGE = """<!doctype html>
   }
   .card:hover .shot { filter: none; transform: scale(1.02); }
   .body { display: flex; flex-direction: column; gap: 8px; padding: 14px 15px 15px; flex: 1; }
-  .t { font-weight: 600; line-height: 1.35; letter-spacing: -.01em; }
+  /* the title is what opens the note, so it is the button and the card is a
+     plain container: a button holding other buttons is read out as one thing */
+  .t {
+    font-family: inherit; font-size: inherit; color: inherit;
+    background: none; border: 0; padding: 0; width: 100%; text-align: left;
+    cursor: pointer;
+    font-weight: 600; line-height: 1.35; letter-spacing: -.01em;
+  }
   .d { color: var(--dim); font-size: 13.5px; flex: 1; }
   .quote {
     font-size: 12.5px; color: #93939c; line-height: 1.5;
@@ -166,12 +173,17 @@ _PAGE = """<!doctype html>
   }
   .quote b { color: var(--text); font-weight: 500; }
   .tagline { display: flex; flex-wrap: wrap; gap: 5px; }
+  /* a clickable chip is a real button, so the keyboard reaches it for free */
   .mini {
+    font-family: inherit; border: 0; text-align: left; line-height: 1.55;
     font-size: 11px; letter-spacing: .02em; padding: 2px 7px; border-radius: 5px;
     background: #1b1b1f; color: var(--dim); cursor: pointer;
     transition: color .16s var(--ease), background .16s var(--ease);
   }
   .mini:hover { color: var(--text); background: #232329; }
+  .mini:focus-visible, .pill:focus-visible, .t:focus-visible {
+    outline: 1px solid var(--text); outline-offset: 2px;
+  }
   .meta {
     display: flex; align-items: center; gap: 7px; font-size: 11.5px; color: var(--dimmer);
     font-variant-numeric: tabular-nums;
@@ -215,7 +227,6 @@ _PAGE = """<!doctype html>
     </div>
     <div class="plan" id="plan" hidden></div>
     <div class="crumbs rail" id="crumbs" hidden></div>
-    <div class="rail" id="cats"></div>
   </div>
   <div class="bead" id="bead"></div>
 </header>
@@ -228,6 +239,7 @@ _PAGE = """<!doctype html>
 </main>
 
 <footer>Links from one Telegram chat. Grows on its own.</footer>
+{sheet_markup}
 
 <script>
 const $ = s => document.querySelector(s);
@@ -242,12 +254,22 @@ const NAMES = {
   article: "reading", video: "video", food: "food", place: "places", misc: "other",
 };
 
+// a category or a source is model-written text. `__proto__` on a plain object
+// hands back something inherited rather than nothing, and the caller then tries
+// to escape an object, so the lookup asks whether the key is really there
+const look = (table, key) => (Object.hasOwn(table, key || "") ? table[key] : "") || key;
+
+// everything on screen, keyed by url, so a click can find the note behind the
+// card it landed on without stuffing the whole note into a data attribute
+const shown = new Map();
+
 function card(it, i) {
+  shown.set(it.url, it);
   const shot = it.image
     ? `<img class="shot" src="${esc(it.image)}" loading="lazy" alt="" onerror="this.remove()">`
     : "";
   const tags = it.tags.slice(0, 4).map(t =>
-    `<span class="mini" data-tag="${esc(t)}">${esc(t)}</span>`).join("");
+    `<button type="button" class="mini" data-tag="${esc(t)}">${esc(t)}</button>`).join("");
   const q = it.quotes[0];
   const quote = q
     ? `<div class="quote"><b>${esc(q.author)}</b> ${esc(q.text.slice(0, 200))}</div>` : "";
@@ -255,23 +277,21 @@ function card(it, i) {
   // nobody said this one in the chat, it came out of someone's own notes
   const kept = it.saved ? `<s>·</s>saved` : "";
   const dead = it.dead ? `<s>·</s>link is down` : "";
-  return `<a class="card${it.dead ? " dead" : ""}" style="--i:${i}" href="${esc(it.url)}"
-      target="_blank" rel="noopener noreferrer">
+  // the card itself opens the note; only the small link leaves for the site.
+  // the title carries the same job for the keyboard, and it is the button —
+  // a card with the role would have swallowed the chips and the link inside it
+  return `<article class="card${it.dead ? " dead" : ""}" style="--i:${i}"
+      data-open="${esc(it.url)}">
     ${shot}
     <div class="body">
-      <div class="t">${esc(it.title || it.domain)}</div>
+      <button type="button" class="t" data-open="${esc(it.url)}"
+        >${esc(it.title || it.domain)}</button>
       <div class="d">${esc(it.description)}</div>
       ${quote}
       <div class="tagline">${tags}</div>
-      <div class="meta">${esc(it.domain)}<s>·</s>${esc(it.date)}${by}${kept}${dead}</div>
-    </div></a>`;
-}
-
-function pills(el, items, pick, label, on) {
-  el.innerHTML = items.map(([name, n], i) =>
-    `<span class="pill${on && on(name) ? " on" : ""}" style="--i:${i}"
-       data-${pick}="${esc(name)}">${esc(label ? label(name) : name)}<n>${n}</n></span>`
-  ).join("");
+      ${outlink(it.url, it.domain)}
+      <div class="meta">${esc(it.date)}${by}${kept}${dead}</div>
+    </div></article>`;
 }
 
 // one render, driven only by state.tags. clearing the markup is not decoration:
@@ -280,10 +300,12 @@ function pills(el, items, pick, label, on) {
 function crumbs() {
   const box = $("#crumbs");
   box.hidden = !state.tags.length;
-  $("#webclear").hidden = !state.tags.length;
+  // one button puts the whole page back the way it opened, so it shows for a
+  // typed query and a category from the model too, not only for picked tags
+  $("#webclear").hidden = !(state.tags.length || state.q || state.category);
   box.innerHTML = !state.tags.length ? ""
     : `<span class="lead">path</span>` + state.tags.map(t =>
-        `<span class="pill on" data-tag="${esc(t)}">${esc(t)}</span>`).join("");
+        `<button type="button" class="pill on" data-tag="${esc(t)}">${esc(t)}</button>`).join("");
 }
 
 function busy(on) {
@@ -308,8 +330,14 @@ function filters() {
   return p;
 }
 
+// every request takes a ticket. a reply holding an old one belongs to a filter
+// the page has already left, or to a "load more" that was clicked twice at the
+// same offset, and appending it would mix two result sets into one grid
+let ticket = 0;
+
 async function load(reset) {
   if (reset) state.offset = 0;
+  const mine = ++ticket;
   busy(true);
   const p = filters();
   p.set("offset", state.offset);
@@ -317,8 +345,10 @@ async function load(reset) {
   try {
     data = await (await fetch("/api/search?" + p)).json();
   } catch (err) {
+    if (mine !== ticket) return;
     busy(false); note("Could not reach the server."); return;
   }
+  if (mine !== ticket) return;
   busy(false);
   total = data.total;
   paint(data, reset);
@@ -332,6 +362,7 @@ async function load(reset) {
 const FOREIGN = /[^\\u0000-\\u024F]/;
 
 function paint(data, reset) {
+  if (reset) shown.clear();
   const html = data.items.map(card).join("");
   if (reset) $("#grid").innerHTML = html;
   else $("#grid").insertAdjacentHTML("beforeend", html);
@@ -340,8 +371,6 @@ function paint(data, reset) {
   $("#more").hidden = state.offset >= total;
   $("#note").hidden = total > 0;
   if (!total) note("Nothing matched. Try fewer words, or drop a filter.");
-  pills($("#cats"), data.categories || [], "category", n => NAMES[n] || n,
-        n => n === state.category);
   crumbs();
   if (reset) Web.pull(filters());
 }
@@ -353,6 +382,8 @@ function note(text) {
 }
 
 {graph_js}
+
+{sheet_js}
 
 /* ---------- interaction ---------- */
 
@@ -369,31 +400,38 @@ function toggleTag(v) {
 }
 
 document.addEventListener("click", e => {
-  const cat = e.target.closest("[data-category]");
   const tag = e.target.closest("[data-tag]");
-  if (cat) {
-    const v = cat.dataset.category;
-    state.category = state.category === v ? "" : v;
-    load(true); return;
-  }
   if (tag) {
     e.preventDefault();
+    // picking a tag from inside the note means "show me these", not "read on"
+    const inside = Sheet.isOpen;
+    Sheet.shut();
     toggleTag(tag.dataset.tag);
+    // shut() hands focus back to the card that opened the panel, and the grid
+    // under it is about to be replaced by the answer. the crumb for the tag
+    // just picked is the one thing on screen that outlives the swap
+    if (inside) {
+      const crumb = $("#crumbs [data-tag]");
+      if (crumb) crumb.focus();
+    }
     scrollTo({ top: 0, behavior: "smooth" });
     return;
   }
+  // a link is a link wherever it sits; anywhere else on a card opens the note
+  if (e.target.closest("a")) return;
+  const open = e.target.closest("[data-open]");
+  if (open && shown.has(open.dataset.open)) Sheet.open(shown.get(open.dataset.open));
 });
 
-$("#webclear").addEventListener("click", () => {
-  state.tags = [];
-  crumbs();
-  Web.repaint();
-  load(true);
-});
+$("#webclear").addEventListener("click", reset);
 
 let timer;
 $("#q").addEventListener("input", e => {
   clearTimeout(timer);
+  // the ticket is spent the moment a key lands, not when the debounce fires:
+  // an answer arriving inside those 180ms would otherwise overwrite the query
+  // that is sitting in the box and then be searched for
+  ticket++;
   state.q = e.target.value;
   $("#plan").hidden = true;
   $("#clear").classList.toggle("on", !!state.q);
@@ -401,13 +439,17 @@ $("#q").addEventListener("input", e => {
 });
 $("#q").addEventListener("keydown", e => {
   if (e.key === "Enter") { clearTimeout(timer); ask(e.target.value); }
-  if (e.key === "Escape") reset();
+  if (e.key === "Escape" && !Sheet.isOpen) reset();
 });
 $("#clear").addEventListener("click", reset);
 $("#more").addEventListener("click", () => load(false));
 
 // "/" focuses the search box, the way every search-first page does it
 addEventListener("keydown", e => {
+  if (e.key === "Escape" && Sheet.isOpen) { Sheet.shut(); return; }
+  // the search box is behind the panel: sending focus there would step straight
+  // out of the modal and past the trap that keeps tab inside it
+  if (Sheet.isOpen) return;
   if (e.key === "/" && document.activeElement !== $("#q")) {
     e.preventDefault(); $("#q").focus();
   }
@@ -431,23 +473,31 @@ async function ask(question) {
   plan.textContent = "reading the question…";
   busy(true);
   skeletons();
+  // the question takes a ticket from the same book as the search box, so a
+  // typed query still in flight cannot land on top of the answer
+  const mine = ++ticket;
   let r;
   try {
     r = await fetch("/api/ask", {
       method: "POST", headers: { "content-type": "application/json" },
       body: JSON.stringify({ q: question.slice(0, 200) }),
     });
-  } catch (err) { busy(false); plan.textContent = "Could not reach the server."; return; }
+  } catch (err) {
+    if (mine !== ticket) return;
+    busy(false); plan.textContent = "Could not reach the server."; return;
+  }
+  if (mine !== ticket) return;
   busy(false);
   if (r.status === 429) { plan.textContent = "Too many questions — wait a minute."; return; }
   if (!r.ok) { plan.textContent = "That did not work. Try plain keywords."; return; }
 
   const data = await r.json();
+  if (mine !== ticket) return;
   const p = data.plan;
   state.q = p.query; state.category = p.category;
   state.tags = p.tag ? [p.tag] : []; state.offset = 0;
   const bits = [p.query && `<b>${esc(p.query)}</b>`,
-                p.category && esc(NAMES[p.category] || p.category)].filter(Boolean).join("  ·  ");
+                p.category && esc(look(NAMES, p.category))].filter(Boolean).join("  ·  ");
   plan.innerHTML = `${esc(p.reply)}${bits ? " → " + bits : ""}
     <span class="x" id="undo">clear</span>`;
   $("#undo").onclick = reset;
@@ -470,4 +520,7 @@ PAGE = (
     .replace("{graph_css}", graph.CSS)
     .replace("{graph_markup}", graph.MARKUP)
     .replace("{graph_js}", graph.JS)
+    .replace("{sheet_css}", sheet.CSS)
+    .replace("{sheet_markup}", sheet.MARKUP)
+    .replace("{sheet_js}", sheet.JS)
 )

@@ -37,3 +37,28 @@ shell and the working directory is not worth betting on.
 that turns a forgotten secret into a machine that will not boot, which is loud
 and immediate. The alternative — booting with an unauthenticated webhook that
 accepts any chat — fails silently and writes into the vault repo.
+
+**R10.** Fly has no rename. `flyctl apps move` changes the organisation, not
+the name, so renaming an app means creating a new one, creating its volume,
+copying every secret, deploying, moving the data over and destroying the old
+one. Two things bite on the way:
+
+- `set -a && . ./.env` looks like it copies the secrets and does not. A key
+  the file declares empty (`TG_BOT_TOKEN=`) and a key the file never mentions
+  at all (`SSH_KEY`, which is read from `~/.ssh/`) both arrive as the empty
+  string, and `flyctl secrets list` shows them with the same digest — which
+  is the tell. Compare digests against the old app before trusting the copy.
+- A secret that only exists on the machine can still be recovered from it:
+  `flyctl ssh console -a old -C "printenv TG_BOT_TOKEN"`. Fly injects secrets
+  as environment variables, so the running machine is the backup.
+
+Nothing follows the app automatically. The Telegram webhook still points at
+the old hostname until `setWebhook` is called again, and until it is, links
+posted to the chat are collected by an app that is about to be destroyed.
+
+**R11.** The volume is the database, and uploading a new one over it wipes
+whatever the app wrote there — accounts included. The vault notes live in git
+and come back with a clone; the `account`, `session` and `invite` tables do
+not exist anywhere else. Pull the old file down first
+(`flyctl ssh sftp get /data/links.db`, plus `-wal`, then checkpoint locally),
+copy those three tables into the file that is going up, and only then push it.

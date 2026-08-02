@@ -1,4 +1,4 @@
-# tg-links-secondbrain
+# cool-stuff
 
 Collects links from the "cool stuff" Telegram chat and from the owner's own
 saved messages into an Obsidian vault. The history was pulled once through
@@ -15,6 +15,7 @@ model writes into the vault — titles, descriptions, keywords — is English; t
 chat quotes keep the language they were said in.
 `app.py` is the webhook and the site (`portal` for the index, `textsearch` for
 the matching, `web` for the page, `graph` for the tag web it draws on a canvas,
+`sheet` for the panel that opens on a card and shows the whole note,
 `ask` for turning a question into search words, `translate` for a non-english
 query in the plain search box: the free MyMemory endpoint under a daily
 character budget first, a model only when that finds nothing). The site is
@@ -81,6 +82,25 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   runs again without it → same file, R5.2
 - The tag web is a canvas because tag strings are model-written text off the
   web, and nothing off the web is parsed as markup → same file, R8
+- The web draws fourteen bubbles, not sixty, and nothing on it drifts on its
+  own: both were what made it unreadable → same file, R7.1–R7.3
+- A card is not a link. Only the domain chip leaves for the site, and the
+  handler order tag → anchor → card is what keeps that true → same file, R10
+- A card is not a button either: the title inside it is, because a button
+  holding four buttons and a link is read out as one control → same file, R15
+- A placeholder nobody filled in ships as the literal text `{sheet_js}` and
+  breaks nothing loudly, so a test looks for it → same file, R12
+- `instagram` is the biggest tag in the vault and says nothing: where a link
+  lives never becomes a bubble → same file, R7.4
+- A lookup table indexed with a model-written key answers `__proto__`, and
+  `esc()` says nothing about `javascript:` → same file, R13
+- Every request takes a ticket: a late reply from the previous filter would
+  otherwise append to the new results → same file, R14
+- Fly has no rename, `.env` copies empty secrets silently, and the webhook
+  keeps pointing at the old host →
+  [knowledge/deployment/rules.md](knowledge/deployment/rules.md) R10
+- Uploading a database over the volume takes the accounts with it: they exist
+  nowhere else → same file, R11
 - Every input to the search has a ceiling: the cost is the vocabulary walk
   behind each word → same file, R9
 - A model asked for an array will sometimes send a comma-separated string.
