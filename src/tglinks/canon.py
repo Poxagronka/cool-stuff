@@ -75,9 +75,22 @@ def site_rules(host: str, path: str, query: str) -> tuple[str, str, str]:
     return host, path, query
 
 
+def add_scheme(url: str) -> str:
+    """Telegram marks bare hosts as links, and urlsplit reads those as a path.
+
+    Without this, "butkus.org" parses to an empty hostname and the whole entry
+    ends up with no domain.
+    """
+    if re.match(r"^[a-z][a-z0-9+.\-]*:", url, re.I):
+        return url
+    if url.startswith("//"):
+        return f"https:{url}"
+    return f"https://{url.lstrip('/')}"
+
+
 def normalise(raw: str) -> str:
     """Canonical form of a url. Deterministic, no network."""
-    url = unwrap(raw.strip())
+    url = add_scheme(unwrap(raw.strip()))
     parts = urlsplit(url)
 
     scheme = (parts.scheme or "https").lower()
