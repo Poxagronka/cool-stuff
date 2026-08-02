@@ -171,3 +171,21 @@ def test_challenge_page_is_not_valid_metadata():
     assert not Meta(url="u", title="Reddit - Please wait for verification").ok()
     assert not Meta(url="u", title="Just a moment...").ok()
     assert Meta(url="u", title="r/malefashionadvice").ok()
+
+
+def test_two_links_same_day_do_not_overwrite_each_other(tmp_path):
+    # tiktok links carry no metadata, so several in one day share a title
+    base = {"domain": "vm.tiktok.com", "title": "TikTok видео", "shared_at": "2024-05-11T10:00:00",
+            "category": "video", "tags": [], "shared_by": "sasha"}
+    first = vault.write(tmp_path, {**base, "url": "https://vm.tiktok.com/ZMM72U7Dp"}, [])
+    second = vault.write(tmp_path, {**base, "url": "https://vm.tiktok.com/ZMM7YVpVh"}, [])
+    assert first != second
+    assert first.exists() and second.exists()
+    assert vault.url_of(first) == "https://vm.tiktok.com/ZMM72U7Dp"
+    assert vault.url_of(second) == "https://vm.tiktok.com/ZMM7YVpVh"
+
+
+def test_rewriting_the_same_link_keeps_its_path(tmp_path):
+    entry = {"domain": "vm.tiktok.com", "title": "TikTok видео", "shared_at": "2024-05-11T10:00:00",
+             "url": "https://vm.tiktok.com/ZMM72U7Dp", "category": "video", "tags": []}
+    assert vault.write(tmp_path, entry, []) == vault.write(tmp_path, entry, [])

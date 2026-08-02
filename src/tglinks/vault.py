@@ -1,5 +1,6 @@
 """Markdown note generation for the Obsidian vault."""
 
+import hashlib
 import re
 from datetime import datetime
 from pathlib import Path
@@ -20,6 +21,31 @@ def note_path(root: Path, entry: dict) -> Path:
     day = sent[:10]
     name = slug(f"{day} {entry['domain']} — {entry['title'] or entry['domain']}")
     return root / "links" / sent[:4] / f"{name}.md"
+
+
+def url_of(path: Path) -> str:
+    """The url a note already on disk points at, empty if it has none."""
+    try:
+        for line in path.read_text(encoding="utf-8").splitlines()[:12]:
+            if line.startswith("url:"):
+                return line[4:].strip().strip("'\"")
+    except OSError:
+        pass
+    return ""
+
+
+def free_path(root: Path, entry: dict) -> Path:
+    """Path for the note, sidestepping a name another link already took.
+
+    Links with no metadata collapse into the same name — several TikToks
+    shared the same day all become "TikTok видео" — and without this the last
+    one silently overwrites the rest.
+    """
+    path = note_path(root, entry)
+    if not path.exists() or url_of(path) == entry["url"]:
+        return path
+    tail = hashlib.sha1(entry["url"].encode()).hexdigest()[:6]
+    return path.with_name(f"{path.stem} {tail}.md")
 
 
 def tg_link(chat_id: int, msg_id: int) -> str:
@@ -85,7 +111,7 @@ def render(entry: dict, context: list[dict]) -> str:
 
 
 def write(root: Path, entry: dict, context: list[dict]) -> Path:
-    path = note_path(root, entry)
+    path = free_path(root, entry)
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(render(entry, context), encoding="utf-8")
     return path
