@@ -217,7 +217,7 @@ async def dump(client, chat, limit, conn):
         stored += 1
         if not found:
             talk += 1
-        for url in found:
+        for url in await pipeline.widen(list(found)):
             if pipeline.store_link(conn, record, url):
                 new += 1
         if stored % 100 == 0:

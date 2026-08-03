@@ -6,7 +6,8 @@ Telethon; new links are caught by a bot on Fly.io.
 
 ## How it is put together
 
-`src/tglinks/` is the pipeline: `canon` (url canonicalisation and dedup) →
+`src/tglinks/` is the pipeline: `containers` (a wishlist page is opened and
+replaced by the links inside it) → `canon` (url canonicalisation and dedup) →
 `enrich` (the enrichment ladder, `sites` for per-site resolvers, `pagetext` for
 the clean page text) → `triage` (only for privately saved links) → `categorize`
 → `vault` (notes) → `gitvault` (push). Every model call goes through `llm`: one
@@ -58,6 +59,9 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   [knowledge/scraping/rules.md](knowledge/scraping/rules.md) R10
 - Clusters merge on the resolved url; the old note is deleted only when the url
   inside it proves whose it is → same file, R11
+- A wishlist is not a link, it is forty links: the page is swapped for its
+  contents before the first row is written, and neither notion nor
+  mywishlist.online puts those contents in the html → same file, R13
 - A title that only changed case is one file on a mac, and deleting the "old"
   name threw away 19 notes in one run → same file, R12
 - The root filesystem of a Fly machine is ephemeral, state lives on the volume

@@ -389,6 +389,7 @@ async def handle(msg: dict) -> None:
         if not found:
             conn.commit()
             return
+        found = await pipeline.widen(found)
         fresh = [cid for url in found if (cid := pipeline.store_link(conn, record, url))]
         conn.commit()
 
