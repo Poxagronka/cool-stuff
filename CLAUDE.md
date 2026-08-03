@@ -90,8 +90,9 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   holding four buttons and a link is read out as one control → same file, R15
 - A placeholder nobody filled in ships as the literal text `{sheet_js}` and
   breaks nothing loudly, so a test looks for it → same file, R12
-- `instagram` is the biggest tag in the vault and says nothing: where a link
-  lives never becomes a bubble → same file, R7.4
+- `instagram` is the biggest tag in the vault and says nothing, and neither
+  does `brand`: where a link lives, and what shape it is, never become bubbles
+  → same file, R7.4
 - A lookup table indexed with a model-written key answers `__proto__`, and
   `esc()` says nothing about `javascript:` → same file, R13
 - Every request takes a ticket: a late reply from the previous filter would
