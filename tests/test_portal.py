@@ -261,3 +261,39 @@ def test_a_vault_that_moved_under_the_process_is_read_again(tmp_path):
     index.load()
     assert index.items[0].title == "The first one"
     assert index.stale() is False
+
+
+def test_both_alphabets_come_back_as_one_list(tmp_path):
+    """A russian caption and an english note both answer a russian word."""
+    vault.write(tmp_path, {
+        "url": "https://norda.run/001", "domain": "norda.run", "title": "Norda 001",
+        "description": "A trail running shoe.", "category": "clothing",
+        "tags": ["running"], "shared_at": "2024-01-02T10:00:00",
+    }, [])
+    vault.write(tmp_path, {
+        "url": "https://example.com/kurtka", "domain": "example.com",
+        "title": "Shell Jacket", "description": "A shell.", "category": "clothing",
+        "tags": ["jacket"], "shared_at": "2024-01-03T10:00:00",
+    }, [{"author": "kolya", "at": "2024-01-03", "text": "бег в дождь"}])
+
+    index = portal.Index(tmp_path)
+    index.load()
+    # as typed, it reaches only the russian caption
+    typed = index.find("бег")
+    assert [i.title for i in typed] == ["Shell Jacket"]
+    # translated, it reaches only the english note
+    english = index.find("running")
+    assert [i.title for i in english] == ["Norda 001"]
+    # merged, it reaches both, and neither is listed twice
+    both = portal.merge_hits(typed, english)
+    assert sorted(i.title for i in both) == ["Norda 001", "Shell Jacket"]
+    assert len({i.url for i in both}) == 2
+
+
+def test_merging_keeps_a_note_at_its_best_place(tmp_path):
+    a = portal.Item(url="a", title="A")
+    b = portal.Item(url="b", title="B")
+    c = portal.Item(url="c", title="C")
+    # c is last of three as typed and first once translated, so it climbs over
+    # b. a and c both lead a run, and the tie goes to the query as it was typed
+    assert [i.url for i in portal.merge_hits([a, b, c], [c])] == ["a", "c", "b"]

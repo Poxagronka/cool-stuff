@@ -20,7 +20,7 @@ from pathlib import Path
 
 import yaml
 
-from .textsearch import Terms, tokens
+from .textsearch import Terms, query_tokens, tokens
 
 FRONT = re.compile(r"^---\n(.*?)\n---", re.S)
 QUOTE_HEAD = re.compile(r"^>\s*\*\*(.+?)\*\*,\s*(\S*)\s*$")
@@ -45,6 +45,22 @@ SOURCE_TAGS = frozenset({
 VAGUE_TAGS = frozenset({"brand"})
 
 OFF_WEB = SOURCE_TAGS | VAGUE_TAGS
+
+
+def merge_hits(*runs: list["Item"]) -> list["Item"]:
+    """Several result lists as one, each note at its best place in any of them.
+
+    A query in another alphabet is searched twice — as it was typed, which
+    reaches the russian captions the vault kept, and translated, which reaches
+    everything written in english. Neither half is the right answer on its own.
+    """
+    best: dict[str, tuple[int, Item]] = {}
+    for run in runs:
+        for rank, item in enumerate(run):
+            seen = best.get(item.url)
+            if seen is None or rank < seen[0]:
+                best[item.url] = (rank, item)
+    return [item for _, item in sorted(best.values(), key=lambda pair: pair[0])]
 
 
 def _ranked(items: list["Item"]) -> list[tuple[str, int]]:
@@ -275,7 +291,7 @@ class Index:
         question turned into keywords by the model is a guess at synonyms, and
         demanding all of them finds nothing — there ranking wins.
         """
-        return self._match(tokens(query), category, list(tags or []), mode)
+        return self._match(query_tokens(query), category, list(tags or []), mode)
 
     def search(self, query: str, category: str = "", tags: list[str] | None = None,
                offset: int = 0, limit: int = 60,
@@ -283,11 +299,12 @@ class Index:
         hits = self.find(query, category, tags, mode)
         return hits[offset:offset + limit], len(hits)
 
-    def _match(self, words: list[str], category: str, tags: list[str],
+    def _match(self, words: list[tuple[str, bool]], category: str, tags: list[str],
                mode: str = "all") -> list[Item]:
         # what each typed word could mean, worked out once against the whole
-        # vocabulary rather than once per note
-        plan = [self.terms.expand(w) for w in words]
+        # vocabulary rather than once per note. a word folded out of cyrillic
+        # only ever means itself: see textsearch.query_tokens
+        plan = [self.terms.expand(w, no_guessing=folded) for w, folded in words]
         scored = []
         for item in self.items:
             if category and item.category != category:

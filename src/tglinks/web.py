@@ -70,6 +70,10 @@ _PAGE = """<!doctype html>
     transition: border-color .2s var(--ease), background .2s var(--ease);
   }
   .field input::placeholder { color: var(--dimmer); }
+  /* the browser puts its own cross on a search input, painted in the system
+     accent and wired to nothing we know about. ours is the one that also
+     drops the tags and the category */
+  .field input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
   .field input:hover { border-color: var(--line-hi); }
   .field input:focus { border-color: var(--dim); background: #141417; }
   .field .clear {
@@ -355,14 +359,16 @@ async function load(reset) {
   busy(false);
   total = data.total;
   paint(data, reset);
-  // everything in the collection is written in english, so a question typed in
-  // another alphabet can only ever hit the chat quotes. when it hits nothing,
-  // hand it to the model, which translates it into english search words
-  if (reset && !total && FOREIGN.test(state.q)) ask(state.q);
+  // the server searched both alphabets and says which english it used
+  if (reset) showTranslation(data.translated);
 }
 
-// anything past latin extended-b: cyrillic, greek, cjk and the rest
-const FOREIGN = /[^\\u0000-\\u024F]/;
+function showTranslation(english) {
+  const plan = $("#plan");
+  if (!english) { plan.hidden = true; plan.textContent = ""; return; }
+  plan.textContent = `${state.q} → ${english}`;
+  plan.hidden = false;
+}
 
 function paint(data, reset) {
   if (reset) shown.clear();
@@ -501,9 +507,7 @@ async function ask(question) {
   state.tags = p.tag ? [p.tag] : []; state.offset = 0;
   const bits = [p.query && `<b>${esc(p.query)}</b>`,
                 p.category && esc(look(NAMES, p.category))].filter(Boolean).join("  ·  ");
-  plan.innerHTML = `${esc(p.reply)}${bits ? " → " + bits : ""}
-    <span class="x" id="undo">clear</span>`;
-  $("#undo").onclick = reset;
+  plan.innerHTML = `${esc(p.reply)}${bits ? " → " + bits : ""}`;
   total = data.total;
   paint(data, true);
 }

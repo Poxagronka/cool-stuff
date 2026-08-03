@@ -1,6 +1,13 @@
 """What a typed word is allowed to mean, and what it is worth once it means it."""
 
-from tglinks.textsearch import MAX_CACHE, MAX_TEXT, MAX_TOKENS, Terms, tokens
+from tglinks.textsearch import (
+    MAX_CACHE,
+    MAX_TEXT,
+    MAX_TOKENS,
+    Terms,
+    query_tokens,
+    tokens,
+)
 
 
 def test_words_are_folded_to_latin():
@@ -62,3 +69,23 @@ def test_an_absurd_query_does_not_grow_the_cache_without_end():
     assert len(terms.cache) <= MAX_CACHE
     # evicting must not have cost anything a real search relies on
     assert dict(terms.expand("arcteryks")) == {"arcteryx": 0.65}
+
+
+def test_a_russian_word_does_not_get_guessed_into_an_english_one():
+    """"бег" folds to "beg", and the vault's nearest word is "be"."""
+    terms = build("things to be continued", "a bag")
+    assert terms.expand("beg") == [("be", 0.65)]
+    # the same word, marked as folded out of cyrillic, is left unanswered so
+    # the search falls through to translating it
+    assert terms.expand("beg", no_guessing=True) == []
+
+
+def test_a_name_folded_out_of_cyrillic_still_matches_itself():
+    terms = build("hoka bondi")
+    assert terms.expand("hoka", no_guessing=True) == [("hoka", 1.0)]
+
+
+def test_the_cyrillic_flag_travels_with_the_token():
+    assert query_tokens("бег") == [("beg", True)]
+    assert query_tokens("running") == [("running", False)]
+    assert query_tokens("Хока Bondi") == [("hoka", True), ("bondi", False)]
