@@ -22,10 +22,13 @@ startup and re-read after a new note is written. The machine uses the same disk
 as the collector, so there is no second source of truth.
 
 **R7.** The vault clone on the machine is one-way by default: the collector
-pushes to it but never pulls. Anything regenerated on the laptop reaches the
-portal only through the `git pull` at startup — it is there in `ensure_clone`,
-but after a push to the vault the machine has to be restarted, otherwise the
-index stays stale.
+pushes to it but never pulls. Anything regenerated on the laptop used to reach
+the portal only through the `git pull` in `ensure_clone` at startup, so a push
+to the vault meant restarting the machine or serving the old notes. It does not
+any more: `Index.stale()` compares the shape of the tree — how many notes there
+are and when the newest one was written — against what was read, at most twice
+a minute, and reloads when the two differ. A restart is no longer part of
+publishing.
 
 **R8.** The image carries `src/` and `scripts/`. Anything documented as
 "`flyctl ssh console -C ...`" has to be in it — for a while the invite script
@@ -62,3 +65,17 @@ and come back with a clone; the `account`, `session` and `invite` tables do
 not exist anywhere else. Pull the old file down first
 (`flyctl ssh sftp get /data/links.db`, plus `-wal`, then checkpoint locally),
 copy those three tables into the file that is going up, and only then push it.
+
+**R12.** There is no timer in the app, and there cannot be one. `suspend` plus
+no health checks (R5) means the process is frozen between requests, so a
+`sleep(3h)` either never fires or has to hold the machine awake to fire —
+which is what R5 exists to prevent. Anything periodic hangs off the wakes that
+happen anyway: on boot and after every webhook update, the app asks a
+timestamp in the `state` table whether the job is due. The clock, when a quiet
+day needs one, lives on the Fly side — a scheduled machine that pokes
+`/health` and exits. `/health` is on the open list, so the poke carries no
+credentials; the app decides for itself whether anything happens.
+
+The corollary is that a long job can be suspended halfway through. It is not a
+crash to be prevented, it is normal operation, and the job has to be written to
+resume — see telegram R13.

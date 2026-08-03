@@ -8,7 +8,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import canon, categorize, enrich, llm, triage, vault
+from . import canon, categorize, containers, enrich, llm, triage, vault
 
 log = logging.getLogger("tglinks")
 
@@ -24,6 +24,27 @@ TRIAGE_CHAIN = os.getenv(
     "groq/llama-3.3-70b-versatile,gemini/gemini-3.5-flash-lite,"
     "anthropic/claude-haiku-4-5-20251001",
 )
+
+
+async def widen(found: list[str]) -> list[str]:
+    """Swap a container page for the links inside it, before anything is stored.
+
+    Somebody posting a wishlist is posting everything on it, not the page. If
+    the page were stored as itself, the shops inside would never reach the
+    vault and never dedup against the ones already there — and the note would
+    be about a person rather than a thing. So the substitution happens here,
+    at the one point where a message's urls turn into rows, and everything
+    downstream sees ordinary links it has never heard of.
+    """
+    out: list[str] = []
+    seen: set[str] = set()
+    for url in found:
+        inside = await containers.expand(url)
+        for one in inside or [url]:
+            if one not in seen:
+                seen.add(one)
+                out.append(one)
+    return out
 
 
 def store_message(conn: sqlite3.Connection, msg: dict) -> None:

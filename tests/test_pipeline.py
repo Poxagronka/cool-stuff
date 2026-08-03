@@ -364,6 +364,124 @@ def test_renaming_a_note_takes_the_old_file_with_it(tmp_path, monkeypatch):
     assert [p.name for p in vault_root.rglob("*.md")] == ["New Name.md"]
 
 
+def test_a_saved_link_the_group_already_posted_ends_up_in_one_note(tmp_path, monkeypatch):
+    """The owner saves what the chat posted months ago: one note, not two.
+
+    The shortener hides it at first, so both sightings write their own note.
+    The run that finally follows the shortener has to fold the two clusters,
+    take away the note the merged one left behind, and publish the surviving
+    note from the public half of the context alone — the sentence the owner
+    wrote to himself never faced the gate. And the title comes back in another
+    case, which on a mac is the same file: the tidy-up at the end must not
+    delete the note it has just written.
+    """
+    conn = db.connect(tmp_path / "t.db")
+    vault_root = tmp_path / "vault"
+
+    public = {"chat_id": -1001, "msg_id": 1, "sent_at": "2025-02-01T10:00:00",
+              "author": "Дима", "text": "отличная куртка", "reply_to": None}
+    pipeline.store_message(conn, public)
+    group = pipeline.store_link(conn, public, "https://shop.com/item")
+    stub_enrichment(monkeypatch, title="Jacket", resolved="https://shop.com/item")
+    chat_note = asyncio.run(pipeline.process_entry(conn, group, vault_root))
+    assert chat_note.name == "Jacket.md"
+
+    saved = {"chat_id": 777, "msg_id": 1, "sent_at": "2025-02-02T10:00:00",
+             "author": "Sasha", "text": "купить после приёма у онколога",
+             "reply_to": None, "private": True}
+    pipeline.store_message(conn, saved)
+    mine = pipeline.store_link(conn, saved, "https://bit.ly/x")
+    # nobody has followed the shortener yet, so this is a link of its own
+    assert mine != group
+
+    async def allow(url, meta, note, chain):
+        return True, "a jacket"
+
+    monkeypatch.setattr(triage, "keep", allow)
+    stub_enrichment(monkeypatch, title="Shortener", resolved="https://bit.ly/x")
+    saved_note = asyncio.run(pipeline.process_entry(conn, mine, vault_root))
+    assert saved_note.name == "Shortener.md"
+    assert len(list(vault_root.rglob("*.md"))) == 2
+
+    async def never(url, meta, note, chain):
+        raise AssertionError("the group has the link, there is nothing left to guard")
+
+    monkeypatch.setattr(triage, "keep", never)
+    stub_enrichment(monkeypatch, title="JACKET", resolved="https://shop.com/item")
+    merged = asyncio.run(pipeline.process_entry(conn, mine, vault_root))
+
+    assert merged is not None
+    assert [p.name for p in vault_root.rglob("*.md")] == ["JACKET.md"]
+    assert not saved_note.exists()
+    written = merged.read_text(encoding="utf-8")
+    assert "url: https://shop.com/item" in written
+    # privacy sits on the message: the group posted this, so the note is the
+    # group's, and what was written beside the private copy stays out of it
+    assert "source: chat" in written
+    assert "отличная куртка" in written
+    assert "онколога" not in written
+    # one cluster, one entry, and the database knows the spelling on disk
+    assert conn.execute("SELECT COUNT(*) FROM entry").fetchone()[0] == 1
+    assert conn.execute("SELECT note_path FROM entry").fetchone()[0] == "links/2025/JACKET.md"
+    assert conn.execute(
+        "SELECT COUNT(*) FROM link WHERE cluster_id = ?", (group,)
+    ).fetchone()[0] == 2
+
+
+def test_a_merge_never_takes_a_note_another_link_now_owns(tmp_path, monkeypatch):
+    """The name a merged cluster remembers can belong to somebody else by now.
+
+    The vault is authored in Obsidian as well as written here, and a name that
+    came free is taken by the next link that wants it. The url inside the file
+    is the only proof of whose note it is, and without that proof the merge
+    leaves the file alone: refusing costs a stale note, guessing deletes a real
+    one out of a repo that gets pushed.
+    """
+    conn = db.connect(tmp_path / "t.db")
+    vault_root = tmp_path / "vault"
+
+    public = {"chat_id": -1001, "msg_id": 1, "sent_at": "2025-02-01T10:00:00",
+              "author": "Дима", "text": "отличная куртка", "reply_to": None}
+    pipeline.store_message(conn, public)
+    group = pipeline.store_link(conn, public, "https://shop.com/item")
+    stub_enrichment(monkeypatch, title="Group Jacket", resolved="https://shop.com/item")
+    asyncio.run(pipeline.process_entry(conn, group, vault_root))
+
+    saved = {"chat_id": 777, "msg_id": 1, "sent_at": "2025-02-02T10:00:00",
+             "author": "Sasha", "text": "надо купить", "reply_to": None, "private": True}
+    pipeline.store_message(conn, saved)
+    mine = pipeline.store_link(conn, saved, "https://bit.ly/x")
+
+    async def allow(url, meta, note, chain):
+        return True, "a jacket"
+
+    monkeypatch.setattr(triage, "keep", allow)
+    stub_enrichment(monkeypatch, title="Saved Jacket", resolved="https://bit.ly/x")
+    saved_note = asyncio.run(pipeline.process_entry(conn, mine, vault_root))
+
+    # the note is moved away on the laptop and another link takes the free name
+    saved_note.unlink()
+    stranger = vault.write(vault_root, {
+        "url": "https://other.com/thing", "domain": "other.com",
+        "title": "Saved Jacket", "category": "misc", "tags": [],
+        "shared_at": "2025-02-02T10:00:00",
+    }, [])
+    assert stranger == saved_note
+
+    async def never(url, meta, note, chain):
+        raise AssertionError("the group has the link, there is nothing left to guard")
+
+    monkeypatch.setattr(triage, "keep", never)
+    stub_enrichment(monkeypatch, title="Group Jacket", resolved="https://shop.com/item")
+    asyncio.run(pipeline.process_entry(conn, mine, vault_root))
+
+    assert stranger.exists()
+    assert "url: https://other.com/thing" in stranger.read_text(encoding="utf-8")
+    assert sorted(p.name for p in vault_root.rglob("*.md")) == [
+        "Group Jacket.md", "Saved Jacket.md",
+    ]
+
+
 def test_a_note_that_is_not_ours_is_left_where_it_is(tmp_path):
     entry = {"domain": "shop.com", "title": "Jacket", "shared_at": "2025-02-01T10:00:00",
              "url": "https://shop.com/a", "category": "clothing", "tags": []}

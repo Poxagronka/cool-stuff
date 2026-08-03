@@ -58,3 +58,11 @@ name is still taken, though: the unique index on `account(name)` is `NOCASE`,
 so the dead row blocks its own owner from re-joining under the same name. Check
 with `scripts/invite.py --who` before minting an invite for somebody who
 already appears there.
+
+**R12.** Admin is a column on `account`, defaulting to 0, and it is granted by
+`scripts/admin.py` on the machine that holds the database. Not a name compared
+inside a request handler: the name is whatever somebody typed at join time, and
+the unique index is NOCASE but that is all it promises. `accounts.is_admin()`
+reads the flag off the row the session already loaded, and every route that
+changes what other people see calls `app.admin_or_403` first — a page that does
+not draw the button is not a check.

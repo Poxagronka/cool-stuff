@@ -13,8 +13,8 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Requ
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from . import (
-    accounts, ask, authweb, brand, db, gitvault, pipeline, portal, translate,
-    urls, vault, web,
+    accounts, ask, authweb, brand, db, gitvault, hidden, pipeline, portal,
+    saved, translate, urls, vault, web,
 )
 from .config import (
     DB_PATH, GITHUB_TOKEN, SSH_KEY, TG_BOT_TOKEN, TG_CHAT, VAULT_PATH, VAULT_REPO,
@@ -51,6 +51,7 @@ async def startup() -> None:
         raise RuntimeError("TG_CHAT is not set")
     app.state.conn = db.connect(DB_PATH)
     accounts.setup(app.state.conn)
+    hidden.setup(app.state.conn)
     root = Path(VAULT_PATH)
     ssh_cmd = gitvault.install_ssh_key(SSH_KEY)
     if ssh_cmd:
@@ -60,8 +61,15 @@ async def startup() -> None:
         log.info("vault clone: %s", "ok" if ok else "failed")
     vault.scaffold(root)
     app.state.vault = root
-    app.state.index = portal.Index(root)
+    # the hidden set is read once and lives on the index, which filters at parse
+    # time: the results, the counts and the tag web are all built from what the
+    # index kept, so none of them can forget to leave a hidden card out
+    app.state.index = portal.Index(root, hidden.all_urls(app.state.conn))
     log.info("portal index: %s notes", app.state.index.load())
+    # the machine has just woken up, which is the only moment a pull can
+    # happen at all. off the critical path: booting must not wait on telegram,
+    # and the reference is kept because a bare task can be collected mid-run
+    app.state.pull = asyncio.create_task(sweep())
 
 
 # telegram posts here and nobody is logged in for it; the rest of the door is
@@ -163,12 +171,63 @@ async def signin_page() -> HTMLResponse:
     return HTMLResponse(authweb.locked())
 
 
+def admin_or_403(request: Request):
+    """The account behind this request, if it is allowed to hide anything.
+
+    The flag is read off the row the session loaded, so the answer comes from
+    the database and not from anything the browser sent. Every route that can
+    change what other people see goes through here — a page that does not draw
+    the button is not a check.
+    """
+    account = getattr(request.state, "account", None)
+    if not accounts.is_admin(account):
+        raise HTTPException(status_code=403, detail="not yours to hide")
+    return account
+
+
+def buried_cards() -> list[tuple[str, str]]:
+    """Every hidden url with the title of its note, newest hide first.
+
+    The database knows the urls and the vault knows what they are called, so
+    the two are joined here. A url whose note has since been deleted keeps its
+    row and simply has no title.
+    """
+    named = {item.url: item.title for item in app.state.index.buried}
+    return [(row["url"], named.get(row["url"], "")) for row in hidden.rows(app.state.conn)]
+
+
+def reread_hidden() -> None:
+    """The hidden set changed, so the index is built again through the new one."""
+    app.state.index.set_hidden(hidden.all_urls(app.state.conn))
+
+
 @app.get("/me", response_class=HTMLResponse)
 async def me(request: Request) -> HTMLResponse:
     account = request.state.account
     return HTMLResponse(authweb.profile(
-        account, accounts.invites_of(app.state.conn, account["id"]), site_root(request)
+        account, accounts.invites_of(app.state.conn, account["id"]), site_root(request),
+        hidden=buried_cards() if accounts.is_admin(account) else None,
     ))
+
+
+@app.post("/api/hide")
+async def hide_card(request: Request) -> dict:
+    """Take one card off the site, for everybody including whoever asked."""
+    account = admin_or_403(request)
+    payload = await request.json()
+    if not hidden.hide(app.state.conn, str(payload.get("url") or ""), account["id"]):
+        raise HTTPException(status_code=400, detail="that is not a url")
+    reread_hidden()
+    return {"ok": True}
+
+
+@app.post("/me/unhide")
+async def unhide_card(request: Request) -> Response:
+    admin_or_403(request)
+    form = await fields(request)
+    hidden.unhide(app.state.conn, form.get("url", [""])[0])
+    reread_hidden()
+    return RedirectResponse("/me", status_code=303)
 
 
 @app.post("/me/invite")
@@ -178,6 +237,7 @@ async def new_invite(request: Request) -> Response:
         return HTMLResponse(authweb.profile(
             account, accounts.invites_of(app.state.conn, account["id"]), site_root(request),
             f"You already have {accounts.UNUSED_LIMIT} invites waiting to be used.",
+            hidden=buried_cards() if accounts.is_admin(account) else None,
         ), status_code=429)
     return RedirectResponse("/me", status_code=303)
 
@@ -193,6 +253,7 @@ async def change_password(request: Request) -> Response:
     return HTMLResponse(authweb.profile(
         account, accounts.invites_of(app.state.conn, account["id"]), site_root(request),
         error=trouble, said="" if trouble else "Changed. Other devices are signed out.",
+        hidden=buried_cards() if accounts.is_admin(account) else None,
     ), status_code=400 if trouble else 200)
 
 
@@ -205,8 +266,10 @@ async def logout(request: Request) -> Response:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def home() -> str:
-    return web.PAGE
+async def home(request: Request) -> str:
+    # the same page for everyone bar one button, and the button is only the
+    # half of it that shows: /api/hide asks again on its own
+    return web.page(accounts.is_admin(request.state.account))
 
 
 @app.get("/favicon.svg")
@@ -340,6 +403,64 @@ async def health() -> dict:
     return {"ok": True, "entries": total, "pending": pending}
 
 
+async def run_saved(why: str) -> dict:
+    """Pull Saved Messages, then do what the webhook does after a note."""
+    log.info("saved messages: pulling (%s)", why)
+    out = await saved.pull(app.state.conn, app.state.vault, writes=_lock)
+    if not out["ran"]:
+        return out
+    notes = out["notes"]
+    if notes:
+        app.state.index.load()
+        if VAULT_REPO:
+            names = ", ".join(p.stem for p in notes[:3])
+            await gitvault.commit_push(app.state.vault, f"saved: {names}")
+    log.info("saved messages: %s read, %s notes", out["seen"], len(notes))
+    return out
+
+
+async def sweep() -> None:
+    """A saved-messages pull, but only if one is due and the machine is up.
+
+    There is no timer anywhere in this process on purpose. The machine suspends
+    when nothing is talking to it and carries no health checks precisely so it
+    can (deployment R5), and a suspended process has no clock: a `sleep(3h)`
+    would either never fire or have to keep the machine awake to fire, and
+    keeping it awake is the thing R5 exists to prevent. So the schedule is
+    hung off the wakes that happen anyway — boot, and every update from the
+    chat — and the interval is enforced by a timestamp in the database rather
+    than by a loop. Something has to do the waking on a quiet day; that is a
+    cron on the fly side pinging /health, see SETUP.md.
+    """
+    try:
+        if not saved.due(app.state.conn):
+            return
+        await run_saved("the machine is awake anyway")
+    except saved.SessionTrouble as trouble:
+        # loudly: the pull reads nothing at all in this state, and reading
+        # nothing is exactly what a healthy run looks like from the outside
+        log.error("saved messages: %s", trouble)
+    except Exception:
+        log.exception("saved messages: the pull failed")
+
+
+@app.post("/api/saved/pull")
+async def pull_saved() -> dict:
+    """Pull Saved Messages now, regardless of when the last run was.
+
+    Behind the door like everything else: this route is not on OPEN_PATHS, so
+    the middleware wants a session for it (accounts R7).
+    """
+    try:
+        out = await run_saved("asked for from the site")
+    except saved.SessionTrouble as trouble:
+        raise HTTPException(status_code=503, detail=str(trouble)) from trouble
+    return {
+        "ran": out["ran"], "why": out["why"], "seen": out["seen"],
+        "notes": [p.name for p in out["notes"]],
+    }
+
+
 async def react(chat_id: int, msg_id: int, emoji: str) -> None:
     """Acknowledge in-chat without posting a message."""
     if not TG_BOT_TOKEN:
@@ -389,6 +510,7 @@ async def handle(msg: dict) -> None:
         if not found:
             conn.commit()
             return
+        found = await pipeline.widen(found)
         fresh = [cid for url in found if (cid := pipeline.store_link(conn, record, url))]
         conn.commit()
 
@@ -449,4 +571,8 @@ async def webhook(
             return {"ok": True}
         # answer immediately: telegram retries on timeout and that means dupes
         background.add_task(handle, msg)
+        # and while the machine is up anyway, see whether the saved messages
+        # are due. background tasks run in order, so the link that arrived
+        # gets its note first
+        background.add_task(sweep)
     return {"ok": True}

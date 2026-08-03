@@ -82,3 +82,46 @@ when the path it is about to unlink is `samefile` as the note just written, and
 record. Both checks are worth keeping even though Fly runs Linux: the vault is
 authored and read on a mac. Verify by counting `entry.note_path` against files
 on disk after any bulk run — they must be equal.
+
+**R14.** A merge never takes a note another link now owns. When two clusters
+fold together (R11), the entry that loses keeps a `note_path` remembered from
+before, and by then that file can belong to somebody else — R6 gives two
+untitled tiktoks the same stem, and the second one to be written is the one the
+name now points at. So `retire()` reads the url out of the file and refuses to
+unlink it unless that url is the one it came to delete. Dropping the
+`url_of(path) != url` check does not fail loudly, it quietly unlinks a stranger's
+note and leaves an entry in the database pointing at nothing; the same shape as
+the 19 notes in R12. This is pinned by
+`tests/test_pipeline.py::test_a_merge_never_takes_a_note_another_link_now_owns`,
+which was verified by mutation — remove the check and the test fails.
+
+**R13.** Some links are not a thing, they are a list of things. A wishlist page
+holds thirty or forty shops, and stored as itself it becomes one note named
+after a person while every shop inside it stays out of the vault and out of the
+dedup. `containers.expand` opens such a page and returns what is inside; the
+substitution happens in `pipeline.widen`, before the first row is written, so
+everything downstream only ever sees ordinary links. A reader that does not
+recognise the url returns None and the link travels on untouched — which is the
+normal case.
+
+Two shapes are read so far, and they need opposite tricks:
+
+- **notion.site.** The html is a javascript loader with no links in it. The
+  page's own endpoint answers though: `POST https://<sub>.notion.site/api/v3/loadPageChunk`
+  with `{"pageId": ..., "limit": 200, "cursor": {"stack": []}, "chunkNumber": 0}`.
+  The id has to be hyphenated 8-4-4-4-12 — the api refuses the 32 glued hex
+  characters the address bar shows. Addresses live in `format.bookmark_url`,
+  `format.display_source`, `format.source`, and as `["a", url]` annotations on
+  rich-text runs anywhere in `properties`, so the whole property map is walked,
+  not just `title`. A block record is nested `value.value` on this api version
+  and `value` on the older one. Notion's own hosts are dropped, and so is
+  `attachment:...`, which is a file pointer rather than a url. The reference
+  page gives 38 links out of 121 blocks.
+- **mywishlist.online.** Server-rendered, but not as markup: the page contains
+  no item anchors at all, the browser builds them from `var wishlist_products = {...}`
+  printed into a script tag. Each item's `redirect_url` is a
+  `/x/<shop-host>/<id>` click counter, and that stub is *not* an http redirect —
+  it is a two second `<meta http-equiv="refresh">` with an analytics ping in
+  between, so the destination has to be read out of the head by hand. Unwrap it
+  in the reader: left alone, the vault fills with notes named after an
+  interstitial.

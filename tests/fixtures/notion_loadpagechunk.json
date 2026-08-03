@@ -1,0 +1,425 @@
+{
+ "cursor": {
+  "stack": [
+   [
+    {
+     "table": "block",
+     "id": "ffb5e754-33ed-40f9-9ee5-49a7def3b1a7",
+     "index": 23,
+     "spaceId": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761"
+    }
+   ],
+   [
+    {
+     "table": "block",
+     "id": "2fd74747-f499-8027-afe6-e85b520d6ee0",
+     "index": 2,
+     "spaceId": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761"
+    }
+   ],
+   [
+    {
+     "table": "block",
+     "id": "2fd74747-f499-803e-a630-c68f9d717c35",
+     "index": 10,
+     "spaceId": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761"
+    },
+    {
+     "table": "block",
+     "id": "2fd74747-f499-808d-acf7-f0546dd6df47",
+     "index": 10,
+     "spaceId": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761"
+    }
+   ],
+   [
+    {
+     "table": "block",
+     "id": "3ac74747-f499-80b7-a99c-d7f48a7ea748",
+     "index": 0,
+     "spaceId": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761"
+    },
+    {
+     "table": "block",
+     "id": "3a574747-f499-80cb-ae1d-ce8de3e5be68",
+     "index": 0,
+     "spaceId": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761"
+    }
+   ]
+  ]
+ },
+ "recordMap": {
+  "block": {
+   "32074747-f499-8034-94ec-cbc744a29abc": {
+    "value": {
+     "value": {
+      "id": "32074747-f499-8034-94ec-cbc744a29abc",
+      "version": 14,
+      "type": "text",
+      "properties": {
+       "title": [
+        [
+         "book a present here → ",
+         [
+          [
+           "b"
+          ],
+          [
+           "h",
+           "gray_background"
+          ]
+         ]
+        ],
+        [
+         "google sheets",
+         [
+          [
+           "a",
+           "https://docs.google.com/spreadsheets/d/1PYudFcfKQt_0NSDlLDUV2EXDNTvoe5OK2T9PTry1fAY/edit?usp=sharing"
+          ],
+          [
+           "b"
+          ],
+          [
+           "h",
+           "gray_background"
+          ],
+          [
+           "i"
+          ]
+         ]
+        ]
+       ]
+      },
+      "format": {
+       "block_color": "blue_background"
+      },
+      "created_time": 1773240690542,
+      "last_edited_time": 1773778403687,
+      "parent_id": "ffb5e754-33ed-40f9-9ee5-49a7def3b1a7",
+      "parent_table": "block",
+      "alive": true,
+      "space_id": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761",
+      "crdt_format_version": 1
+     },
+     "role": "reader"
+    }
+   },
+   "32674747-f499-80c7-8526-fcf8bc9348d5": {
+    "value": {
+     "value": {
+      "id": "32674747-f499-80c7-8526-fcf8bc9348d5",
+      "version": 22,
+      "type": "text",
+      "properties": {
+       "title": [
+        [
+         "book a present here → ",
+         [
+          [
+           "b"
+          ],
+          [
+           "h",
+           "gray_background"
+          ]
+         ]
+        ],
+        [
+         "google sheets",
+         [
+          [
+           "a",
+           "https://docs.google.com/spreadsheets/d/1PYudFcfKQt_0NSDlLDUV2EXDNTvoe5OK2T9PTry1fAY/edit?usp=sharing"
+          ],
+          [
+           "b"
+          ],
+          [
+           "h",
+           "gray_background"
+          ],
+          [
+           "i"
+          ]
+         ]
+        ]
+       ]
+      },
+      "created_time": 1773778437650,
+      "last_edited_time": 1773778439689,
+      "parent_id": "ffb5e754-33ed-40f9-9ee5-49a7def3b1a7",
+      "parent_table": "block",
+      "alive": true,
+      "space_id": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761",
+      "crdt_format_version": 1
+     },
+     "role": "reader"
+    }
+   },
+   "3a474747-f499-800f-94ee-e243c8c62a01": {
+    "value": {
+     "value": {
+      "id": "3a474747-f499-800f-94ee-e243c8c62a01",
+      "version": 14,
+      "type": "image",
+      "properties": {
+       "size": [
+        [
+         "579.4 KiB"
+        ]
+       ],
+       "title": [
+        [
+         "image.png"
+        ]
+       ],
+       "source": [
+        [
+         "attachment:56c2e01b-f2a7-4ae6-9062-36df1ddb10a3:image.png"
+        ]
+       ]
+      },
+      "format": {
+       "block_width": 703.9921875,
+       "display_source": "attachment:56c2e01b-f2a7-4ae6-9062-36df1ddb10a3:image.png",
+       "block_full_width": false,
+       "block_page_width": true,
+       "block_aspect_ratio": 0.6666666666666666,
+       "block_preserve_scale": true
+      },
+      "created_time": 1784636725942,
+      "last_edited_time": 1784636731748,
+      "parent_id": "ffb5e754-33ed-40f9-9ee5-49a7def3b1a7",
+      "parent_table": "block",
+      "alive": true,
+      "file_ids": [
+       "56c2e01b-f2a7-4ae6-9062-36df1ddb10a3"
+      ],
+      "space_id": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761",
+      "crdt_format_version": 1
+     },
+     "role": "reader"
+    }
+   },
+   "39e74747-f499-806f-aff0-f9c8ff74dffe": {
+    "value": {
+     "value": {
+      "id": "39e74747-f499-806f-aff0-f9c8ff74dffe",
+      "version": 31,
+      "type": "sub_sub_header",
+      "properties": {
+       "title": [
+        [
+         "soft rock",
+         [
+          [
+           "a",
+           "https://softrock.pt/en/rocks/goodpiece-atomos-smooth-eng"
+          ]
+         ]
+        ]
+       ]
+      },
+      "created_time": 1784120297951,
+      "last_edited_time": 1784120345972,
+      "parent_id": "ffb5e754-33ed-40f9-9ee5-49a7def3b1a7",
+      "parent_table": "block",
+      "alive": true,
+      "space_id": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761",
+      "crdt_format_version": 1
+     },
+     "role": "reader"
+    }
+   },
+   "39e74747-f499-805e-b4f4-c54203c2ea08": {
+    "value": {
+     "value": {
+      "id": "39e74747-f499-805e-b4f4-c54203c2ea08",
+      "version": 17,
+      "type": "image",
+      "properties": {
+       "size": [
+        [
+         "2.4 MiB"
+        ]
+       ],
+       "title": [
+        [
+         "image.png"
+        ]
+       ],
+       "source": [
+        [
+         "attachment:9ca44d7a-a05b-4f97-8318-cfa5901311c8:image.png"
+        ]
+       ]
+      },
+      "format": {
+       "block_width": 720,
+       "display_source": "attachment:9ca44d7a-a05b-4f97-8318-cfa5901311c8:image.png",
+       "block_full_width": false,
+       "block_page_width": true,
+       "block_aspect_ratio": 0.5128552097428958,
+       "block_preserve_scale": true
+      },
+      "created_time": 1784120324005,
+      "last_edited_time": 1784120332961,
+      "parent_id": "ffb5e754-33ed-40f9-9ee5-49a7def3b1a7",
+      "parent_table": "block",
+      "alive": true,
+      "file_ids": [
+       "9ca44d7a-a05b-4f97-8318-cfa5901311c8"
+      ],
+      "space_id": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761",
+      "crdt_format_version": 1
+     },
+     "role": "reader"
+    }
+   },
+   "39e74747-f499-80ec-be51-d2141742a9d2": {
+    "value": {
+     "value": {
+      "id": "39e74747-f499-80ec-be51-d2141742a9d2",
+      "version": 9,
+      "type": "sub_sub_header",
+      "properties": {
+       "title": [
+        [
+         "Raja Kirik",
+         [
+          [
+           "a",
+           "https://nyegenyegetapes.bandcamp.com/"
+          ],
+          [
+           "b"
+          ]
+         ]
+        ]
+       ]
+      },
+      "created_time": 1784120199874,
+      "last_edited_time": 1784120256356,
+      "parent_id": "39e74747-f499-80ea-bad4-e0ec86f2594e",
+      "parent_table": "block",
+      "alive": true,
+      "space_id": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761",
+      "crdt_format_version": 1
+     },
+     "role": "reader"
+    }
+   },
+   "39e74747-f499-808b-a471-c81e6928e928": {
+    "value": {
+     "value": {
+      "id": "39e74747-f499-808b-a471-c81e6928e928",
+      "version": 45,
+      "type": "bulleted_list",
+      "properties": {
+       "title": [
+        [
+         "Indian Moon Moth Soft Stuffed Plush Toy",
+         [
+          [
+           "a",
+           "https://www.gagebeasleyshop.com/en-de/products/indian-moon-plush"
+          ]
+         ]
+        ]
+       ]
+      },
+      "created_time": 1784119836145,
+      "last_edited_time": 1784749536496,
+      "parent_id": "2fd74747-f499-803e-a630-c68f9d717c35",
+      "parent_table": "block",
+      "alive": true,
+      "space_id": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761",
+      "crdt_format_version": 1
+     },
+     "role": "reader"
+    }
+   },
+   "39e74747-f499-802c-ae05-dc42780df1df": {
+    "value": {
+     "value": {
+      "id": "39e74747-f499-802c-ae05-dc42780df1df",
+      "version": 26,
+      "type": "bulleted_list",
+      "properties": {
+       "title": [
+        [
+         "Pink Orchid Mantis Soft Stuffed Plush Toy",
+         [
+          [
+           "a",
+           "https://www.gagebeasleyshop.com/en-de/products/orchid-mantis"
+          ]
+         ]
+        ]
+       ]
+      },
+      "created_time": 1784119838371,
+      "last_edited_time": 1784749536496,
+      "parent_id": "2fd74747-f499-803e-a630-c68f9d717c35",
+      "parent_table": "block",
+      "alive": true,
+      "space_id": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761",
+      "crdt_format_version": 1
+     },
+     "role": "reader"
+    }
+   },
+   "2ef74747-f499-80d0-abf2-f9cf40235188": {
+    "value": {
+     "value": {
+      "id": "2ef74747-f499-80d0-abf2-f9cf40235188",
+      "version": 20,
+      "type": "image",
+      "properties": {
+       "size": [
+        [
+         "739.6KB"
+        ]
+       ],
+       "title": [
+        [
+         "Untitled"
+        ]
+       ],
+       "source": [
+        [
+         "https://prod-files-secure.s3.us-west-2.amazonaws.com/e0a1ce1b-08a7-4645-92ae-d6c49e26f761/b0dc9417-6304-49d6-8c8e-58bd3dd2cf80/Untitled.png"
+        ]
+       ]
+      },
+      "format": {
+       "block_width": 205.328125,
+       "display_source": "https://prod-files-secure.s3.us-west-2.amazonaws.com/e0a1ce1b-08a7-4645-92ae-d6c49e26f761/b0dc9417-6304-49d6-8c8e-58bd3dd2cf80/Untitled.png",
+       "block_full_width": false,
+       "block_page_width": true,
+       "block_aspect_ratio": 1.191,
+       "copied_from_pointer": {
+        "id": "78b1c817-6ff1-491b-8874-d4844a53b54e",
+        "table": "block",
+        "spaceId": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761"
+       },
+       "block_preserve_scale": true
+      },
+      "created_time": 1769035713628,
+      "last_edited_time": 1770240769059,
+      "parent_id": "2fd74747-f499-808d-acf7-f0546dd6df47",
+      "parent_table": "block",
+      "alive": true,
+      "copied_from": "78b1c817-6ff1-491b-8874-d4844a53b54e",
+      "file_ids": [
+       "b0dc9417-6304-49d6-8c8e-58bd3dd2cf80"
+      ],
+      "space_id": "e0a1ce1b-08a7-4645-92ae-d6c49e26f761",
+      "crdt_format_version": 1
+     },
+     "role": "reader"
+    }
+   }
+  }
+ }
+}

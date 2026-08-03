@@ -1,5 +1,7 @@
 """The portal reads the same notes the vault writes, so it is tested against them."""
 
+from pathlib import Path
+
 import pytest
 
 from tglinks import portal, vault
@@ -261,6 +263,51 @@ def test_a_vault_that_moved_under_the_process_is_read_again(tmp_path):
     index.load()
     assert index.items[0].title == "The first one"
     assert index.stale() is False
+
+
+def test_a_note_that_goes_away_mid_walk_does_not_stop_the_reader(tmp_path, monkeypatch):
+    """A note can be taken out of the vault while the vault is being read.
+
+    `git pull --rebase` runs as a subprocess and the event loop is free to
+    serve a search while it rewrites `links/`, so a file that the walk has
+    just listed is gone by the time anything asks how old it is. That question
+    used to be fatal: the error left through the search handler as a 500, and
+    through the collector it took the push and the reaction with it. The check
+    has to shrug, and still see the note that landed in the meantime.
+    """
+    (tmp_path / "links").mkdir()
+
+    def note(name: str, title: str, url: str) -> Path:
+        path = tmp_path / "links" / name
+        path.write_text(
+            f"---\nurl: {url}\ndomain: a.com\ntitle: {title}\n"
+            "shared_at: '2025-02-01'\n---\n", encoding="utf-8")
+        return path
+
+    doomed = note("a.md", "Первый", "https://a.com/1")
+    note("b.md", "Второй", "https://b.com/2")
+    index = portal.Index(tmp_path)
+    assert index.load() == 2
+
+    real_stat = Path.stat
+
+    def vanishing(self, *args, **kwargs):
+        # listed a moment ago and gone now, the way a rebase leaves it
+        if self == doomed:
+            doomed.unlink(missing_ok=True)
+        return real_stat(self, *args, **kwargs)
+
+    monkeypatch.setattr(Path, "stat", vanishing)
+    index._checked = 0.0
+    assert index.stale() is True
+    monkeypatch.undo()
+
+    # and the note written while all that was going on is picked up
+    note("c.md", "Третий", "https://c.com/3")
+    index._checked = 0.0
+    assert index.stale() is True
+    assert index.load() == 2
+    assert sorted(i.title for i in index.items) == ["Второй", "Третий"]
 
 
 def test_both_alphabets_come_back_as_one_list(tmp_path):

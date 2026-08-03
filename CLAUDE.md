@@ -6,7 +6,8 @@ Telethon; new links are caught by a bot on Fly.io.
 
 ## How it is put together
 
-`src/tglinks/` is the pipeline: `canon` (url canonicalisation and dedup) →
+`src/tglinks/` is the pipeline: `containers` (a wishlist page is opened and
+replaced by the links inside it) → `canon` (url canonicalisation and dedup) →
 `enrich` (the enrichment ladder, `sites` for per-site resolvers, `pagetext` for
 the clean page text) → `triage` (only for privately saved links) → `categorize`
 → `vault` (notes) → `gitvault` (push). Every model call goes through `llm`: one
@@ -21,8 +22,13 @@ query in the plain search box: the free MyMemory endpoint under a daily
 character budget first, a model only when that finds nothing). The site is
 invite-only: `accounts` (invites, passwords, sessions), `authweb` (the sign-in,
 join and profile pages), and `scripts/invite.py` which mints the first invite on
-the machine. You arrive on an invite link and pick a name and a password; you
+the machine. One account is an admin (`scripts/admin.py` grants it) and can take
+a card off the site; `hidden` keeps those urls and the profile page puts them
+back. You arrive on an invite link and pick a name and a password; you
 come back through `/signin`. `brand` holds the favicon and the header glyph.
+`saved` is the scheduled pull of the owner's Saved Messages: the Telethon
+session off the volume, a watermark in `state`, one run at a time, and the
+clusters handed to the same triage gate the backfill uses.
 `scripts/backfill.py` is the one-off dump, `--saved` for Saved Messages.
 Details in `research/` and `PLAN.md`, the state of the environment in
 `SETUP.md`.
@@ -58,11 +64,24 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   [knowledge/scraping/rules.md](knowledge/scraping/rules.md) R10
 - Clusters merge on the resolved url; the old note is deleted only when the url
   inside it proves whose it is → same file, R11
+- And the note a merge gives up can already belong to another link, so
+  `retire()` reads the url out of the file before unlinking → same file, R14
+- A wishlist is not a link, it is forty links: the page is swapped for its
+  contents before the first row is written, and neither notion nor
+  mywishlist.online puts those contents in the html → same file, R13
 - A title that only changed case is one file on a mac, and deleting the "old"
   name threw away 19 notes in one run → same file, R12
 - The root filesystem of a Fly machine is ephemeral, state lives on the volume
   only → [knowledge/deployment/rules.md](knowledge/deployment/rules.md) R1
 - Fly health checks keep the machine awake, so there are none → same file, R5
+- And therefore no timer in the app either: a frozen process has no clock, so
+  the periodic work hangs off the wakes and the cron lives on the Fly side →
+  same file, R12
+- The saved-messages session cannot be created on the server, and a login that
+  is gone reads an empty history exactly like a healthy run does →
+  [knowledge/telegram/rules.md](knowledge/telegram/rules.md) R12
+- The saved pull reads forward from a watermark, and an empty watermark means
+  "what the laptop already imported", not zero → same file, R13
 - The image ships `scripts/` too, and `ssh console -C` needs an absolute path
   → same file, R8
 - No `WEBHOOK_SECRET` or `TG_CHAT` means the app will not boot, on purpose →
@@ -76,6 +95,12 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   R5
 - An account from before passwords cannot sign in and still holds its name →
   same file, R11
+- Admin is a column granted from the machine, never a name compared inside a
+  handler, and the button on the card is not the check → same file, R12
+- Hiding is a decision about the site, so it lives in the database and the
+  collector never learns of it: a hidden link still deduplicates and still
+  collects context →
+  [knowledge/portal/rules.md](knowledge/portal/rules.md) R18
 - The model in the site search writes no answer, it only calls `search` →
   [knowledge/portal/rules.md](knowledge/portal/rules.md) R1
 - The model's category guess is a hint, not a filter: on zero hits the search
@@ -97,6 +122,9 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   `esc()` says nothing about `javascript:` → same file, R13
 - Every request takes a ticket: a late reply from the previous filter would
   otherwise append to the new results → same file, R14
+- The vault moves while it is being walked: a `git pull --rebase` deletes notes
+  out from under `rglob`, so a file that cannot be stat'd is skipped, not fatal
+  → same file, R19
 - Fly has no rename, `.env` copies empty secrets silently, and the webhook
   keeps pointing at the old host →
   [knowledge/deployment/rules.md](knowledge/deployment/rules.md) R10

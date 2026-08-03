@@ -25,10 +25,12 @@ from telethon.errors import (  # noqa: E402
     SessionPasswordNeededError,
 )
 
-from tglinks.config import TG_API_HASH, TG_API_ID  # noqa: E402
+from tglinks.config import TG_API_HASH, TG_API_ID, TG_SESSION  # noqa: E402
 
 ROOT = Path(__file__).resolve().parents[1]
-SESSION = str(ROOT / "data" / "backfill")
+# telethon appends the suffix itself, and the session is named by config so
+# that the file this login writes is the file the server later reads
+SESSION = str(TG_SESSION.with_suffix(""))
 STATE = ROOT / "data" / "login.json"
 
 

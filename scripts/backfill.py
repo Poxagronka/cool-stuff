@@ -22,41 +22,25 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
 from telethon import TelegramClient  # noqa: E402
 from telethon.tl.types import InputMessagesFilterUrl  # noqa: E402
 
-from tglinks import canon, db, pipeline, urls, vault  # noqa: E402
+from tglinks import canon, db, pipeline, saved, vault  # noqa: E402
 from tglinks.config import (  # noqa: E402
     DB_PATH,
     TG_API_HASH,
     TG_API_ID,
     TG_CHAT,
+    TG_SESSION,
     VAULT_PATH,
 )
 
-SESSION = str(Path(__file__).resolve().parents[1] / "data" / "backfill")
+# the same file the server uses, named by TG_SESSION so a laptop run and the
+# scheduled pull cannot end up on two different logins. telethon wants the
+# path without the suffix it appends itself
+SESSION = str(TG_SESSION.with_suffix(""))
 
-
-def _entities(msg) -> list[dict]:
-    out = []
-    for ent in msg.entities or []:
-        name = type(ent).__name__
-        if name == "MessageEntityTextUrl":
-            out.append({"type": "text_link", "url": ent.url})
-        elif name == "MessageEntityUrl":
-            out.append({"type": "url", "offset": ent.offset, "length": ent.length})
-    return out
-
-
-def _parent(msg) -> int | None:
-    reply = getattr(msg, "reply_to", None)
-    return getattr(reply, "reply_to_msg_id", None) if reply else None
-
-
-def _urls_of(msg) -> list[str]:
-    found = urls.from_entities(msg.message or "", _entities(msg))
-    if not found and getattr(msg, "web_preview", None):
-        preview_url = getattr(msg.web_preview, "url", None)
-        if preview_url:
-            found = [preview_url]
-    return found
+# reading links out of a telethon message is the same job here and in the
+# scheduled pull, and it was worth exactly one copy
+_parent = saved.parent_of
+_urls_of = saved.urls_of
 
 
 async def iter_links(client, chat, limit: int | None):
@@ -217,7 +201,7 @@ async def dump(client, chat, limit, conn):
         stored += 1
         if not found:
             talk += 1
-        for url in found:
+        for url in await pipeline.widen(list(found)):
             if pipeline.store_link(conn, record, url):
                 new += 1
         if stored % 100 == 0:
