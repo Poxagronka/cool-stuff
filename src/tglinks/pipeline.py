@@ -8,7 +8,7 @@ import sqlite3
 from datetime import datetime, timedelta
 from pathlib import Path
 
-from . import canon, categorize, containers, enrich, llm, triage, vault
+from . import canon, categorize, containers, enrich, llm, pagetext, pictures, triage, vault
 
 log = logging.getLogger("tglinks")
 
@@ -332,8 +332,19 @@ async def process_entry(conn: sqlite3.Connection, cluster_id: int, vault_root: P
     # after the page text costs one extra fetch and turns a generic app-store
     # placeholder into an actual description
     page = (meta.fields or {}).get("page_text", "")
-    if not page and not dead and len(meta.description) < 60:
-        page = await enrich.body_text(resolved)
+    want_text = not page and len(meta.description) < 60
+    # a card with no picture is the one thing on the site that looks broken,
+    # and a shop that forgot og:image still shows the product further down the
+    # document. the head stopped short of it; the body has it
+    want_image = not meta.image
+    if not dead and (want_text or want_image):
+        raw = await enrich.full_page(resolved)
+        if raw and want_text:
+            page = pagetext.extract(raw)
+        if raw and want_image:
+            meta.image = pictures.pick(raw, resolved)
+    if not meta.image and not dead:
+        meta.image = await pictures.from_search(resolved, meta.title)
 
     context = context_for_cluster(conn, cluster_id)
     saved = private_only(conn, cluster_id)

@@ -375,11 +375,14 @@ async def enrich(url: str, preview: dict | None = None) -> Meta:
     return best
 
 
-async def body_text(url: str) -> str:
-    """Readable text of the page, for links whose metadata says nothing.
+async def full_page(url: str) -> str:
+    """The whole document, for links whose head said nothing useful.
 
     Deliberately outside the ladder: the ladder stops at </head>, this asks
-    for the whole document, so it only runs when the head turned out empty.
+    for everything after it, so it only runs when the head turned out empty.
+    Two callers want the body for different reasons — the text for a link with
+    no description, the pictures for a link with no image — and they share the
+    one fetch rather than asking a slow shop twice.
     """
     raw = ""
     try:
@@ -412,7 +415,13 @@ async def body_text(url: str) -> str:
     # would go to the model as if they were text
     if raw[:2000].count("�") > 20 or "<" not in raw[:2000]:
         return ""
-    return pagetext.extract(raw)
+    return raw
+
+
+async def body_text(url: str) -> str:
+    """Readable text of the page, for links whose metadata says nothing."""
+    raw = await full_page(url)
+    return pagetext.extract(raw) if raw else ""
 
 
 def final_url(url: str, meta: Meta) -> str:

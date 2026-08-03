@@ -47,6 +47,12 @@ SSH_KEY = os.getenv("SSH_KEY", "")
 
 HTTP_TIMEOUT = float(os.getenv("HTTP_TIMEOUT", "20"))
 
+# google's programmable search, used only for the cards no page would give a
+# picture for. the free tier is 100 queries a day, so it is a tail and not a
+# tier: no key means that tail is simply not there
+GOOGLE_CSE_KEY = os.getenv("GOOGLE_CSE_KEY", "")
+GOOGLE_CSE_CX = os.getenv("GOOGLE_CSE_CX", "")
+
 CATEGORIES = [
     "clothing",
     "tech",

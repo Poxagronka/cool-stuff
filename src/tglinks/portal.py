@@ -44,7 +44,14 @@ SOURCE_TAGS = frozenset({
 # narrows nothing, so it goes the same way as the platforms
 VAGUE_TAGS = frozenset({"brand"})
 
-OFF_WEB = SOURCE_TAGS | VAGUE_TAGS
+# whose list a link came off, which `scripts/unpack.py --tag` writes onto every
+# item of a wishlist at once. that is bookkeeping about where the link was
+# found, the same kind of fact as "instagram", and one unpacked wishlist puts
+# forty notes under one bubble. the tag stays on the note and still filters
+# from the panel — it just is not one of the things the vault is about
+OWNER_TAGS = frozenset({"wishlist", "sasha", "hanna", "vesna"})
+
+OFF_WEB = SOURCE_TAGS | VAGUE_TAGS | OWNER_TAGS
 
 
 def merge_hits(*runs: list["Item"]) -> list["Item"]:

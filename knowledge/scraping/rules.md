@@ -128,3 +128,25 @@ Two shapes are read so far, and they need opposite tricks:
   between, so the destination has to be read out of the head by hand. Unwrap it
   in the reader: left alone, the vault fills with notes named after an
   interstitial.
+
+**R15.** A page with no `og:image` usually still has the picture, further down
+than the ladder looks. The head fetch stops at `</head>` on purpose, so the
+image fallback rides the full-document fetch that `body_text` already made for
+links with no description: one request answers both questions
+(`enrich.full_page`, 2026-08-03). Picking is the hard half, not fetching — the
+first `<img>` on a shop page is the logo, the second a payment badge, and
+somewhere below sits a 1×1 tracking pixel. `pictures.pick` scores instead of
+taking in order: JSON-LD about the page's own subject first, then the main
+column, then declared size, with tracking hosts, svg, `data:` and
+logo/icon/badge/payment filenames thrown out. Structured data is trusted about
+*which* picture matters but not about *what the file is* — a shop that declares
+its header logo as the page image is still declaring a logo, so the filename
+filter runs over the JSON-LD candidates too. Measured on the vault's own
+imageless entries: 20 of 40 non-social pages give a usable photo, and the misses
+are pages that genuinely have none. Below that is Google's Programmable Search
+(`pictures.from_search`), which is a tail and not a tier: the free quota is 100
+queries a day, so it runs only after the document was read and refused, and no
+key at all just ends the ladder one rung earlier. The engine must be created
+with "Search the entire web" chosen *in the create form* — the toggle is
+permanently disabled afterwards on a site-restricted engine — and "Image search"
+turned on, or `searchType=image` answers with nothing.

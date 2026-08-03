@@ -12,7 +12,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "scripts"))
 import backfill  # noqa: E402
 
 from tglinks import app as app_module  # noqa: E402
-from tglinks import canon, categorize, db, enrich, pipeline, triage, urls, vault  # noqa: E402
+from tglinks import canon, categorize, db, enrich, pictures, pipeline, triage, urls, vault  # noqa: E402
 
 
 @pytest.mark.parametrize(
@@ -156,11 +156,14 @@ def stub_enrichment(monkeypatch, title="Jacket", resolved="", seen=None):
         return {"title": title, "description": "A warm jacket.", "category": "clothing",
                 "tags": ["jacket"], "keywords": ["jacket", "warm"], "confidence": "high"}
 
-    async def no_body(url):
+    async def no_body(url, *rest):
         return ""
 
     monkeypatch.setattr(enrich, "enrich", enriched)
-    monkeypatch.setattr(enrich, "body_text", no_body)
+    # the stubbed meta carries no image, so the picture hunt would otherwise
+    # fetch the page and then ask google about it
+    monkeypatch.setattr(enrich, "full_page", no_body)
+    monkeypatch.setattr(pictures, "from_search", no_body)
     monkeypatch.setattr(categorize, "classify", sorted_out)
     if resolved:
         monkeypatch.setattr(enrich, "final_url", lambda url, meta: resolved)
