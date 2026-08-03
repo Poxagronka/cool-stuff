@@ -130,6 +130,9 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   [knowledge/deployment/rules.md](knowledge/deployment/rules.md) R10
 - Uploading a database over the volume takes the accounts with it: they exist
   nowhere else → same file, R11
+- And carrying the laptop's vault over doubles notes twice over: mac `tar`
+  packs `._*` siblings, and every case-only rename the mac declined lands as a
+  second note. `entry.note_path` says which one is real → same file, R13
 - Every input to the search has a ceiling: the cost is the vocabulary walk
   behind each word → same file, R9
 - A model asked for an array will sometimes send a comma-separated string.

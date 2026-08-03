@@ -83,6 +83,9 @@ record. Both checks are worth keeping even though Fly runs Linux: the vault is
 authored and read on a mac. Verify by counting `entry.note_path` against files
 on disk after any bulk run — they must be equal.
 
+The rename the mac declined is still owed, and it comes due the moment the
+vault reaches Linux: see deployment R13.
+
 **R14.** A merge never takes a note another link now owns. When two clusters
 fold together (R11), the entry that loses keeps a `note_path` remembered from
 before, and by then that file can belong to somebody else — R6 gives two

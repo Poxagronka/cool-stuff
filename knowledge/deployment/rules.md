@@ -79,3 +79,22 @@ credentials; the app decides for itself whether anything happens.
 The corollary is that a long job can be suspended halfway through. It is not a
 crash to be prevented, it is normal operation, and the job has to be written to
 resume — see telegram R13.
+
+**R13.** Carrying the laptop's vault onto the volume is not a copy, it is a
+merge between two filesystems that disagree, and both disagreements produce
+duplicate notes on the site.
+
+A `tar czf` on a mac packs an AppleDouble `._name.md` beside every file that
+carries an extended attribute, and `com.apple.provenance` puts one on
+everything downloaded or written by a sandboxed process. Linux has no idea what
+those are and `ls` will not show them, so the count looks right while `find`
+sees twice as many. `COPYFILE_DISABLE=1 tar czf ...`, or delete `._*` after
+unpacking.
+
+The second is R12 in the scraping rules seen from the other side: a title that
+only changed case never renamed its file on the mac, so the laptop's vault
+still carries the old spelling. Unpacked onto a case-sensitive volume that old
+spelling becomes a second note, indistinguishable on the site from the first.
+`entry.note_path` settles it — it records the file the cluster owns, and every
+other note claiming the same url is a leftover. 21 of them came over in the
+saved-messages import (2026-08-03).
