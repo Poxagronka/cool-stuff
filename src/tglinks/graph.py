@@ -16,8 +16,11 @@ CSS = """
 
   :root { --bubble: #1c1c21; }
   .web { padding: 0 0 22px; }
+  /* the row holds nothing but the reset button, which comes and goes. it keeps
+     its height anyway, or the whole web jumps down the moment a tag is picked */
   .webbar {
     display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px;
+    min-height: 31px;
   }
   .webclear {
     margin-left: auto; font: inherit; font-size: 12px; color: var(--dim);
@@ -60,7 +63,6 @@ CSS = """
 MARKUP = """
 <section class="web" aria-label="Tag web">
   <div class="webbar">
-    <span class="lead">tags</span>
     <button class="webclear" id="webclear" type="button" hidden>× reset</button>
   </div>
   <div class="webbox" id="webbox">
