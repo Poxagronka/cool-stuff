@@ -176,7 +176,30 @@ def dead_invite() -> str:
     )
 
 
-def profile(account, invites, base: str, error: str = "", said: str = "") -> str:
+def hidden_section(cards) -> str:
+    """The cards taken off the site, each with the way back.
+
+    Only the admin is handed this, because only the admin can undo it. A title
+    here is a model's writing about a page off the internet, and a url is a
+    string somebody posted in a chat: both go through `html.escape`, and the
+    url is shown as text rather than as a link — nothing on this page needs to
+    be one click away from wherever it points.
+    """
+    rows = []
+    for url, title in cards:
+        rows.append(
+            '<div class="row"><span class="tag">hidden</span>'
+            f'<code>{html.escape(title or url)}</code>'
+            '<form method="post" action="/me/unhide">'
+            f'<input type="hidden" name="url" value="{html.escape(url)}">'
+            '<button class="copy">unhide</button></form></div>'
+        )
+    listing = "".join(rows) or '<p style="margin-top:14px">Nothing is hidden.</p>'
+    return f'<div class="sub">hidden cards</div>{listing}'
+
+
+def profile(account, invites, base: str, error: str = "", said: str = "",
+            hidden=None) -> str:
     """Who you are, the invites you handed out, and the password you come back with."""
     rows = []
     for inv in invites:
@@ -197,6 +220,11 @@ def profile(account, invites, base: str, error: str = "", said: str = "") -> str
     bad = f'<div class="bad">{html.escape(error)}</div>' if error else ""
     note = f'<p style="margin-top:14px">{html.escape(said)}</p>' if said else ""
 
+    # nothing at all means "you are not an admin"; an empty list means "you are,
+    # and nothing is hidden". the second one still gets the section, so the
+    # place to undo a hide is somewhere you can find before you need it
+    buried = "" if hidden is None else hidden_section(hidden)
+
     body = (
         '<div class="head">'
         f"<h1>{html.escape(account['name'])}</h1>"
@@ -205,6 +233,7 @@ def profile(account, invites, base: str, error: str = "", said: str = "") -> str
         f"{bad}"
         '<div class="sub">invites you sent</div>'
         f"{listing}"
+        f"{buried}"
         '<div class="sub">password</div>'
         '<p style="margin-top:8px">Changing it signs out every other device.</p>'
         '<form method="post" action="/me/password">'

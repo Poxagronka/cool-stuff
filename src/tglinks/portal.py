@@ -194,11 +194,23 @@ def parse(path: Path) -> Item | None:
 
 
 class Index:
-    """In-memory view of the vault, rebuilt when the note count changes."""
+    """In-memory view of the vault, rebuilt when the note count changes.
 
-    def __init__(self, root: Path) -> None:
+    The index is also where hiding happens. A hidden url is a row in the
+    database and the notes on disk know nothing about it, so the set is handed
+    in once and kept: filtering at load time means the results, the counts and
+    the tag web are all built out of `items` and none of them has to remember
+    to ask. Asking the database on every request would be the same answer
+    fetched a hundred times a minute for a list that changes twice a year.
+    """
+
+    def __init__(self, root: Path, hidden: set[str] | frozenset[str] = frozenset()) -> None:
         self.root = root
+        self.hidden = frozenset(hidden)
         self.items: list[Item] = []
+        # the hidden notes, parsed and set aside: the profile page lists them
+        # by title, and only the vault knows what a url is called
+        self.buried: list[Item] = []
         self.terms = Terms()
         self.stamp = (0, 0.0)
         self._checked = 0.0
@@ -224,16 +236,23 @@ class Index:
         self._checked = now
         return self._shape() != self.stamp
 
+    def set_hidden(self, hidden: set[str] | frozenset[str]) -> int:
+        """Take a new hidden set and read the vault again through it."""
+        self.hidden = frozenset(hidden)
+        return self.load()
+
     def load(self) -> int:
         self.stamp = self._shape()
         self._checked = time.monotonic()
-        found = []
+        found, buried = [], []
         for path in sorted((self.root / "links").rglob("*.md")):
             item = parse(path)
             if item:
-                found.append(item)
+                (buried if item.url in self.hidden else found).append(item)
         found.sort(key=lambda i: i.shared_at, reverse=True)
+        buried.sort(key=lambda i: i.shared_at, reverse=True)
         self.items = found
+        self.buried = buried
         terms = Terms()
         for item in found:
             terms.add(set(item.words))

@@ -22,7 +22,9 @@ query in the plain search box: the free MyMemory endpoint under a daily
 character budget first, a model only when that finds nothing). The site is
 invite-only: `accounts` (invites, passwords, sessions), `authweb` (the sign-in,
 join and profile pages), and `scripts/invite.py` which mints the first invite on
-the machine. You arrive on an invite link and pick a name and a password; you
+the machine. One account is an admin (`scripts/admin.py` grants it) and can take
+a card off the site; `hidden` keeps those urls and the profile page puts them
+back. You arrive on an invite link and pick a name and a password; you
 come back through `/signin`. `brand` holds the favicon and the header glyph.
 `scripts/backfill.py` is the one-off dump, `--saved` for Saved Messages.
 Details in `research/` and `PLAN.md`, the state of the environment in
@@ -80,6 +82,12 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   R5
 - An account from before passwords cannot sign in and still holds its name →
   same file, R11
+- Admin is a column granted from the machine, never a name compared inside a
+  handler, and the button on the card is not the check → same file, R12
+- Hiding is a decision about the site, so it lives in the database and the
+  collector never learns of it: a hidden link still deduplicates and still
+  collects context →
+  [knowledge/portal/rules.md](knowledge/portal/rules.md) R18
 - The model in the site search writes no answer, it only calls `search` →
   [knowledge/portal/rules.md](knowledge/portal/rules.md) R1
 - The model's category guess is a hint, not a filter: on zero hits the search

@@ -24,7 +24,10 @@ CREATE TABLE IF NOT EXISTS account (
   name       TEXT NOT NULL,
   key        TEXT NOT NULL UNIQUE,
   invited_by INTEGER REFERENCES account(id),
-  created_at TEXT NOT NULL
+  created_at TEXT NOT NULL,
+  -- may take a card off the site. nobody is born with it: it is granted from
+  -- the machine that holds the database, by scripts/admin.py
+  admin      INTEGER NOT NULL DEFAULT 0
 );
 -- the name is the login, so two people cannot hold the same one, and "Sasha"
 -- must not be a different account from "sasha"
@@ -62,8 +65,13 @@ PASSWORD_MAX = 200
 # for anybody working through a word list
 SCRYPT = {"n": 2**14, "r": 8, "p": 1}
 
-# added after the first accounts existed, so it cannot be NOT NULL
-LATER = [("account", "pass_hash", "TEXT")]
+# added after the first accounts existed. `pass_hash` cannot be NOT NULL, and
+# `admin` can only because the default answers for every row that predates it:
+# everyone who was already here is an ordinary account
+LATER = [
+    ("account", "pass_hash", "TEXT"),
+    ("account", "admin", "INTEGER NOT NULL DEFAULT 0"),
+]
 
 NAME_OK = re.compile(r"^[\w][\w .\-]*$", re.U)
 
@@ -255,6 +263,30 @@ def set_password(conn: sqlite3.Connection, account_id: int, password: str,
             "DELETE FROM session WHERE account_id = ? AND token <> ?", (account_id, keep)
         )
     return ""
+
+
+def is_admin(account: sqlite3.Row | None) -> bool:
+    """Whether this account may take a card off the site.
+
+    The answer comes off the row the session already loaded, never off a name
+    written into a handler: a hardcoded name in the request path is one typo
+    away from letting somebody who picked that name at join time in.
+    """
+    return bool(account is not None and account["admin"])
+
+
+def set_admin(conn: sqlite3.Connection, name: str, on: bool = True) -> bool:
+    """Grant or take back admin by login name. False when there is no such name.
+
+    Only `scripts/admin.py` calls this, from the machine that holds the
+    database. Nothing reachable over http can hand the flag out.
+    """
+    row = by_name(conn, name)
+    if not row:
+        return False
+    conn.execute("UPDATE account SET admin = ? WHERE id = ?", (1 if on else 0, row["id"]))
+    conn.commit()
+    return True
 
 
 def rename(conn: sqlite3.Connection, account_id: int, name: str) -> None:
