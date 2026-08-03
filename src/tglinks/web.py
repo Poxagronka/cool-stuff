@@ -180,6 +180,29 @@ _PAGE = """<!doctype html>
     transition: filter .35s var(--ease), transform .5s var(--ease);
   }
   .card:hover .shot { filter: none; transform: scale(1.02); }
+  /* what a card gets when the page has no picture to give. not a placeholder
+     standing in for one that failed to load — an instagram post has no picture
+     we are ever allowed to read, and a grey box implies something is broken.
+     the colour comes off the domain, so a shop looks the same on every card */
+  .frame { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; }
+  .frame .shot { position: absolute; inset: 0; height: 100%; aspect-ratio: auto; }
+  .mark {
+    position: absolute; inset: 0; display: grid; place-items: center;
+    background:
+      radial-gradient(120% 140% at 20% 0%,
+        hsl(var(--h) 32% 26%) 0%, hsl(var(--h) 24% 13%) 70%);
+    transition: transform .5s var(--ease);
+  }
+  .card:hover .mark { transform: scale(1.02); }
+  .mark b {
+    font-size: 13px; font-weight: 500; letter-spacing: .04em;
+    color: hsl(var(--h) 30% 82%); opacity: .8;
+    max-width: 85%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  /* the site's own mark, if it keeps one where every site keeps it. it fails
+     to load about as often as not, and failing quietly is the whole design */
+  .mark img { width: 28px; height: 28px; object-fit: contain; margin-bottom: 8px; }
+  .mark .stack { display: grid; place-items: center; }
   .body { display: flex; flex-direction: column; gap: 8px; padding: 14px 15px 15px; flex: 1; }
   /* the title is what opens the note, so it is the button and the card is a
      plain container: a button holding other buttons is read out as one thing */
@@ -298,11 +321,38 @@ const hideButton = it => ADMIN
       title="Hide this from everyone">${HIDE_SVG}</button>`
   : "";
 
+// a colour the domain always gets and never shares by accident. any hash would
+// do; this one is short and the spread over 360 degrees is even enough that two
+// shops next to each other rarely land on the same tile
+function hue(domain) {
+  let h = 0;
+  for (const ch of domain) h = (h * 31 + ch.codePointAt(0)) | 0;
+  return Math.abs(h) % 360;
+}
+
+// the picture, and underneath it the thing to look at when there is none. an
+// instagram post has no picture we are allowed to read and never will, so this
+// is not a placeholder waiting on a fix — it is the answer. the favicon is
+// asked for straight from the site, no third party in the middle, and it
+// removes itself when the site does not keep one
+function frame(it) {
+  const domain = it.domain || "";
+  const shot = it.image
+    ? `<img class="shot" src="${esc(it.image)}" loading="lazy" alt=""
+         onerror="this.remove()">`
+    : "";
+  const mark = domain
+    ? `<div class="mark"><div class="stack"
+         ><img src="https://${esc(domain)}/favicon.ico" alt="" loading="lazy"
+            onerror="this.remove()"><b>${esc(domain)}</b></div></div>`
+    : "";
+  if (!shot && !mark) return "";
+  return `<div class="frame" style="--h:${hue(domain)}">${mark}${shot}</div>`;
+}
+
 function card(it, i) {
   shown.set(it.url, it);
-  const shot = it.image
-    ? `<img class="shot" src="${esc(it.image)}" loading="lazy" alt="" onerror="this.remove()">`
-    : "";
+  const shot = frame(it);
   const tags = it.tags.slice(0, 4).map(t =>
     `<button type="button" class="mini" data-tag="${esc(t)}">${esc(t)}</button>`).join("");
   const q = it.quotes[0];

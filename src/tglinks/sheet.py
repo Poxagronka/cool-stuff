@@ -44,10 +44,8 @@ CSS = """
      lighting up is the same signal without the frame */
   .sheet .shut:focus-visible { color: var(--text); border-color: var(--text); }
   .out:focus-visible { outline: 1px solid var(--text); outline-offset: 2px; }
-  .sheet .hero {
-    width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #17171b;
-    display: block; border-bottom: 1px solid var(--line);
-  }
+  .sheet .frame { border-bottom: 1px solid var(--line); }
+  .sheet .shot { object-fit: cover; }
   .sheet .inner { padding: 22px 24px 26px; }
   .sheet h2 {
     margin: 0 0 12px; font-size: 22px; line-height: 1.25; letter-spacing: -.02em;
@@ -156,8 +154,9 @@ const Sheet = (() => {
 
   function open(it) {
     back = document.activeElement;
-    const hero = it.image
-      ? `<img class="hero" src="${esc(it.image)}" alt="" onerror="this.remove()">` : "";
+    // the same picture-or-tile the card shows, so opening a note does not
+    // change what the thing looks like
+    const hero = frame(it);
     const said = (it.quotes || []).map(q =>
       `<blockquote><b>${esc(q.author)}</b><i>${esc(q.at || "")}</i><br>${esc(q.text)}</blockquote>`
     ).join("");
