@@ -43,11 +43,14 @@ _PAGE = """<!doctype html>
     border-bottom: 1px solid var(--line);
   }
   .bar { display: flex; align-items: baseline; gap: 14px; padding: 20px 0 14px; }
+  /* plain inline, not inline-flex: the baseline of an inline-flex box is its
+     first item's, which here is the glyph, and the count beside it then sat a
+     couple of pixels below the wordmark it is supposed to line up with */
   .mark {
-    display: inline-flex; align-items: center; gap: 9px;
     font-size: 13px; font-weight: 500; letter-spacing: .14em; text-transform: uppercase;
+    white-space: nowrap;
   }
-  .glyph { flex: none; transform: translateY(1px); }
+  .glyph { vertical-align: -2px; margin-right: 9px; }
   .count {
     font-variant-numeric: tabular-nums; font-size: 13px; color: var(--dim);
     transition: opacity .25s var(--ease);
