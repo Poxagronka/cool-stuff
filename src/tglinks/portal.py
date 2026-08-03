@@ -204,8 +204,24 @@ class Index:
         self._checked = 0.0
 
     def _shape(self) -> tuple[int, float]:
-        """How many notes there are and when the newest one was written."""
-        times = [p.stat().st_mtime for p in (self.root / "links").rglob("*.md")]
+        """How many notes there are and when the newest one was written.
+
+        A note listed by the walk can be gone by the time it is asked how old
+        it is: `git pull --rebase` rewrites `links/` in a subprocess the event
+        loop is free to leave, and a search walking the same tree meets the
+        gap. Asking was fatal — the error left through the search handler as a
+        500 and through the collector it took the push and the reaction with
+        it — where the reader everywhere else in this module treats a moving
+        vault as ordinary. Skipping the file is also self-correcting: the shape
+        comes out smaller than the truth, so the next check sees a difference
+        and reads the vault again.
+        """
+        times = []
+        for path in (self.root / "links").rglob("*.md"):
+            try:
+                times.append(path.stat().st_mtime)
+            except OSError:
+                continue
         return len(times), max(times, default=0.0)
 
     def stale(self) -> bool:
