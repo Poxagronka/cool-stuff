@@ -13,8 +13,8 @@ from fastapi import BackgroundTasks, FastAPI, Header, HTTPException, Query, Requ
 from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Response
 
 from . import (
-    accounts, ask, authweb, brand, db, gitvault, pipeline, portal, translate,
-    urls, vault, web,
+    accounts, ask, authweb, brand, db, gitvault, hidden, pipeline, portal,
+    translate, urls, vault, web,
 )
 from .config import (
     DB_PATH, GITHUB_TOKEN, SSH_KEY, TG_BOT_TOKEN, TG_CHAT, VAULT_PATH, VAULT_REPO,
@@ -51,6 +51,7 @@ async def startup() -> None:
         raise RuntimeError("TG_CHAT is not set")
     app.state.conn = db.connect(DB_PATH)
     accounts.setup(app.state.conn)
+    hidden.setup(app.state.conn)
     root = Path(VAULT_PATH)
     ssh_cmd = gitvault.install_ssh_key(SSH_KEY)
     if ssh_cmd:
@@ -60,7 +61,10 @@ async def startup() -> None:
         log.info("vault clone: %s", "ok" if ok else "failed")
     vault.scaffold(root)
     app.state.vault = root
-    app.state.index = portal.Index(root)
+    # the hidden set is read once and lives on the index, which filters at parse
+    # time: the results, the counts and the tag web are all built from what the
+    # index kept, so none of them can forget to leave a hidden card out
+    app.state.index = portal.Index(root, hidden.all_urls(app.state.conn))
     log.info("portal index: %s notes", app.state.index.load())
 
 
@@ -163,12 +167,63 @@ async def signin_page() -> HTMLResponse:
     return HTMLResponse(authweb.locked())
 
 
+def admin_or_403(request: Request):
+    """The account behind this request, if it is allowed to hide anything.
+
+    The flag is read off the row the session loaded, so the answer comes from
+    the database and not from anything the browser sent. Every route that can
+    change what other people see goes through here — a page that does not draw
+    the button is not a check.
+    """
+    account = getattr(request.state, "account", None)
+    if not accounts.is_admin(account):
+        raise HTTPException(status_code=403, detail="not yours to hide")
+    return account
+
+
+def buried_cards() -> list[tuple[str, str]]:
+    """Every hidden url with the title of its note, newest hide first.
+
+    The database knows the urls and the vault knows what they are called, so
+    the two are joined here. A url whose note has since been deleted keeps its
+    row and simply has no title.
+    """
+    named = {item.url: item.title for item in app.state.index.buried}
+    return [(row["url"], named.get(row["url"], "")) for row in hidden.rows(app.state.conn)]
+
+
+def reread_hidden() -> None:
+    """The hidden set changed, so the index is built again through the new one."""
+    app.state.index.set_hidden(hidden.all_urls(app.state.conn))
+
+
 @app.get("/me", response_class=HTMLResponse)
 async def me(request: Request) -> HTMLResponse:
     account = request.state.account
     return HTMLResponse(authweb.profile(
-        account, accounts.invites_of(app.state.conn, account["id"]), site_root(request)
+        account, accounts.invites_of(app.state.conn, account["id"]), site_root(request),
+        hidden=buried_cards() if accounts.is_admin(account) else None,
     ))
+
+
+@app.post("/api/hide")
+async def hide_card(request: Request) -> dict:
+    """Take one card off the site, for everybody including whoever asked."""
+    account = admin_or_403(request)
+    payload = await request.json()
+    if not hidden.hide(app.state.conn, str(payload.get("url") or ""), account["id"]):
+        raise HTTPException(status_code=400, detail="that is not a url")
+    reread_hidden()
+    return {"ok": True}
+
+
+@app.post("/me/unhide")
+async def unhide_card(request: Request) -> Response:
+    admin_or_403(request)
+    form = await fields(request)
+    hidden.unhide(app.state.conn, form.get("url", [""])[0])
+    reread_hidden()
+    return RedirectResponse("/me", status_code=303)
 
 
 @app.post("/me/invite")
@@ -178,6 +233,7 @@ async def new_invite(request: Request) -> Response:
         return HTMLResponse(authweb.profile(
             account, accounts.invites_of(app.state.conn, account["id"]), site_root(request),
             f"You already have {accounts.UNUSED_LIMIT} invites waiting to be used.",
+            hidden=buried_cards() if accounts.is_admin(account) else None,
         ), status_code=429)
     return RedirectResponse("/me", status_code=303)
 
@@ -193,6 +249,7 @@ async def change_password(request: Request) -> Response:
     return HTMLResponse(authweb.profile(
         account, accounts.invites_of(app.state.conn, account["id"]), site_root(request),
         error=trouble, said="" if trouble else "Changed. Other devices are signed out.",
+        hidden=buried_cards() if accounts.is_admin(account) else None,
     ), status_code=400 if trouble else 200)
 
 
@@ -205,8 +262,10 @@ async def logout(request: Request) -> Response:
 
 
 @app.get("/", response_class=HTMLResponse)
-async def home() -> str:
-    return web.PAGE
+async def home(request: Request) -> str:
+    # the same page for everyone bar one button, and the button is only the
+    # half of it that shows: /api/hide asks again on its own
+    return web.page(accounts.is_admin(request.state.account))
 
 
 @app.get("/favicon.svg")

@@ -27,6 +27,19 @@ GLYPH = (
     "</svg>"
 )
 
+# the little control on a card that only the admin is shown: an eye with a
+# stroke through it. drawn rather than typed, because an emoji in a source file
+# is a character whose font, size and colour belong to the reader's system
+HIDE_ICON = (
+    '<svg viewBox="0 0 24 24" width="13" height="13" aria-hidden="true" '
+    'fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round">'
+    '<path d="M2.6 12S6.4 5.9 12 5.9c1.5 0 2.8.4 4 1"/>'
+    '<path d="M19.3 8.4c1.3 1.3 2.1 2.7 2.1 3.6 0 0-3.8 6.1-9.4 6.1-1.7 0-3.2-.5-4.5-1.3"/>'
+    '<path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"/>'
+    '<path d="M4 20 20 4"/>'
+    "</svg>"
+)
+
 ICON_LINK = '<link rel="icon" type="image/svg+xml" href="/favicon.svg">'
 
 NAME = "cool stuff"

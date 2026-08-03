@@ -154,6 +154,22 @@ _PAGE = """<!doctype html>
   }
   .card.dead { opacity: .4; }
   .card.dead:hover { opacity: .7; }
+  /* the hide control, drawn for the admin only. it floats over the corner of
+     the card instead of sitting in the body, where it would move the text of
+     every card that has no picture */
+  .hide {
+    position: absolute; top: 8px; right: 8px; z-index: 2; padding: 0;
+    display: grid; place-items: center; width: 24px; height: 24px;
+    border-radius: 7px; cursor: pointer; color: var(--dim);
+    background: color-mix(in srgb, var(--bg) 72%, transparent);
+    border: 1px solid var(--line);
+    opacity: 0; transition: opacity .18s var(--ease), color .18s var(--ease);
+  }
+  /* invisible until the card is under the pointer, but never invisible to the
+     keyboard: opacity is the only thing hiding it, so focus can bring it back */
+  .card:hover .hide, .hide:focus-visible { opacity: 1; }
+  .hide:hover { color: var(--text); border-color: var(--line-hi); }
+  .hide:focus-visible { outline: 1px solid var(--text); outline-offset: 2px; }
   @keyframes rise {
     from { opacity: 0; transform: translateY(8px); }
     to   { opacity: 1; transform: none; }
@@ -270,6 +286,18 @@ const look = (table, key) => (Object.hasOwn(table, key || "") ? table[key] : "")
 // card it landed on without stuffing the whole note into a data attribute
 const shown = new Map();
 
+// whether to draw the hide control at all. it decides what is on the page and
+// nothing else: the endpoint behind the button asks the database who you are,
+// so a flipped flag in a console buys the flipper nothing
+const ADMIN = {admin};
+const HIDE_SVG = `{hide_icon}`;
+
+const hideButton = it => ADMIN
+  ? `<button type="button" class="hide" data-hide="${esc(it.url)}"
+      aria-label="Hide ${esc(it.title || it.domain)}"
+      title="Hide this from everyone">${HIDE_SVG}</button>`
+  : "";
+
 function card(it, i) {
   shown.set(it.url, it);
   const shot = it.image
@@ -289,6 +317,7 @@ function card(it, i) {
   // a card with the role would have swallowed the chips and the link inside it
   return `<article class="card${it.dead ? " dead" : ""}" style="--i:${i}"
       data-open="${esc(it.url)}">
+    ${hideButton(it)}
     ${shot}
     <div class="body">
       <button type="button" class="t" data-open="${esc(it.url)}"
@@ -408,7 +437,34 @@ function toggleTag(v) {
   load(true);
 }
 
+// the card it sits on carries data-open, so this has to be asked before the
+// panel is, the same way the tag chips are asked before the card
+async function hideCard(url) {
+  let r;
+  try {
+    r = await fetch("/api/hide", {
+      method: "POST", headers: { "content-type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+  } catch (err) { note("Could not reach the server."); return; }
+  if (!r.ok) { note("That is not yours to hide."); return; }
+  // the card goes now rather than after a reload: the grid keeps its place and
+  // the count is the only other thing on screen that knew about it
+  for (const el of document.querySelectorAll(".card")) {
+    if (el.dataset.open === url) el.remove();
+  }
+  shown.delete(url);
+  total = Math.max(0, total - 1);
+  state.offset = Math.max(0, state.offset - 1);
+  say(total);
+  $("#note").hidden = total > 0;
+  if (!total) note("Nothing left here.");
+  Web.pull(filters());
+}
+
 document.addEventListener("click", e => {
+  const kill = e.target.closest("[data-hide]");
+  if (kill) { e.preventDefault(); hideCard(kill.dataset.hide); return; }
   const tag = e.target.closest("[data-tag]");
   if (tag) {
     e.preventDefault();
@@ -521,9 +577,10 @@ load(true);
 """
 
 # not an f-string on the template itself: it is full of javascript braces
-PAGE = (
+_FILLED = (
     _PAGE.replace("{icon}", brand.ICON_LINK)
     .replace("{glyph}", brand.GLYPH)
+    .replace("{hide_icon}", brand.HIDE_ICON)
     .replace("{graph_css}", graph.CSS)
     .replace("{graph_markup}", graph.MARKUP)
     .replace("{graph_js}", graph.JS)
@@ -531,3 +588,18 @@ PAGE = (
     .replace("{sheet_markup}", sheet.MARKUP)
     .replace("{sheet_js}", sheet.JS)
 )
+
+
+def page(admin: bool = False) -> str:
+    """The page as this reader gets it.
+
+    The only thing that differs is whether the hide control is drawn. It is a
+    boolean written into the script rather than a whole second template: the
+    button is one element, and the endpoint behind it is what actually decides
+    who may hide anything.
+    """
+    return _FILLED.replace("{admin}", "true" if admin else "false")
+
+
+# the ordinary reader's page, and what the placeholder test reads
+PAGE = page()

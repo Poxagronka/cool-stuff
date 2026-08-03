@@ -176,3 +176,16 @@ and merges the two lists on url, each note at its best rank in either. This is
 also why R16 matters more than it looks: nine junk hits are not zero, so the
 old fallback never fired at all. Translations are memoised per query string —
 the box searches on every keystroke and MyMemory is metered by the character.
+
+**R18.** Hidden is a property of the url and it lives in the database
+(`hidden_url`), never in the note. The vault is the collection and hiding is a
+decision about the site: written into the front matter it would go to git, and
+the collector would have to learn about it. It does not — a hidden link still
+deduplicates and still gets the next thing the chat said about it appended to
+its note, exactly as before. The set reaches the portal once: `app` reads it at
+startup and hands it to `portal.Index`, which sorts the parsed notes into
+`items` and `buried` at load time. Everything the page shows — the results, the
+counts, the tag web — is built from `items`, so nothing has to remember to
+filter, and no request touches the database for it. `/api/hide` and
+`/me/unhide` write the row and call `index.set_hidden()`, which is one reread of
+four hundred files for a list that changes twice a year.
