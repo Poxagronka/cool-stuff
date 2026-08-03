@@ -28,7 +28,7 @@ log = logging.getLogger("tglinks")
 
 # a page with hundreds of links is somebody's whole browsing history, and every
 # link past this one costs a fetch and a model call. the tail is not worth it
-MAX_INSIDE = 60
+MAX_INSIDE = 120
 
 # how many of a wishlist's own redirect stubs to unwrap at once
 FANOUT = 6
