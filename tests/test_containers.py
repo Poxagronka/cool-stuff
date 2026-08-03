@@ -88,6 +88,13 @@ def test_notion_keeps_its_own_addresses_to_itself():
             "type": "video",
             "format": {"display_source": "https://www.youtube.com/watch?v=s1eWe2vy184"},
         }}},
+        # an image pasted into the page: notion links it by its storage
+        # address, and it is not one of the things on the wishlist
+        "d": {"value": {"value": {
+            "type": "image",
+            "format": {"display_source":
+                       "https://prod-files-secure.s3.us-west-2.amazonaws.com/e0a1/b0dc.jpg"},
+        }}},
     }}}
     assert containers.links_in_chunk(chunk) == [
         "https://arcteryx.com/beta-lt",

@@ -34,6 +34,9 @@ MAX_INSIDE = 120
 FANOUT = 6
 
 NOTION_HOSTS = ("notion.site", "notion.so", "notion.com")
+# a notion page links its own uploads by their storage address, and an image
+# somebody pasted into a wishlist is not one of the things on the wishlist
+NOTION_ASSETS = ("amazonaws.com", "notion-static.com")
 BARE_UUID = re.compile(r"[0-9a-f]{32}", re.I)
 DASHED_UUID = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I
@@ -128,7 +131,7 @@ def links_in_chunk(chunk: dict) -> list[str]:
         if isinstance(fmt, dict):
             found.extend(fmt.get(field) for field in NOTION_URL_FIELDS)
         found.extend(_annotated(block.get("properties")))
-    return _outward([f for f in found if isinstance(f, str)], skip=NOTION_HOSTS)
+    return _outward([f for f in found if isinstance(f, str)], skip=NOTION_HOSTS + NOTION_ASSETS)
 
 
 async def notion(client: httpx.AsyncClient, url: str, host: str) -> list[str] | None:
