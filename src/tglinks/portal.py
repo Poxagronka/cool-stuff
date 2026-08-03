@@ -47,6 +47,22 @@ VAGUE_TAGS = frozenset({"brand"})
 OFF_WEB = SOURCE_TAGS | VAGUE_TAGS
 
 
+def merge_hits(*runs: list["Item"]) -> list["Item"]:
+    """Several result lists as one, each note at its best place in any of them.
+
+    A query in another alphabet is searched twice — as it was typed, which
+    reaches the russian captions the vault kept, and translated, which reaches
+    everything written in english. Neither half is the right answer on its own.
+    """
+    best: dict[str, tuple[int, Item]] = {}
+    for run in runs:
+        for rank, item in enumerate(run):
+            seen = best.get(item.url)
+            if seen is None or rank < seen[0]:
+                best[item.url] = (rank, item)
+    return [item for _, item in sorted(best.values(), key=lambda pair: pair[0])]
+
+
 def _ranked(items: list["Item"]) -> list[tuple[str, int]]:
     """Subject tags of these items, biggest first, ties broken by name."""
     counts: dict[str, int] = {}

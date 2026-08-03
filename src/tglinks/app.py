@@ -226,6 +226,43 @@ def live_index() -> portal.Index:
     return index
 
 
+# a query translated once is remembered. the box fires on every keystroke and
+# the free endpoint is metered by the character, so "бег" typed letter by letter
+# must not cost three translations, and typing it again tomorrow none at all
+_english: dict[str, str] = {}
+_ENGLISH_MAX = 512
+
+
+async def english_of(query: str) -> str:
+    """The english of a foreign query, or "" when it could not be had."""
+    if query in _english:
+        return _english[query]
+    out = await _translator.to_english(query)
+    if len(_english) >= _ENGLISH_MAX:
+        del _english[next(iter(_english))]
+    _english[query] = out
+    return out
+
+
+async def both_alphabets(
+    index: portal.Index, q: str, category: str, picked: list[str],
+) -> tuple[list[portal.Item], str]:
+    """What the query finds as typed and as translated, in one list.
+
+    The vault is written in english and keeps the chat's russian captions as
+    they were said, so a russian word has matches on both sides. Translating
+    only when the first half comes back empty hid the english half whenever the
+    russian half found anything at all.
+    """
+    hits = index.find(q, category, picked)
+    if not translate.foreign(q):
+        return hits, ""
+    english = await english_of(q)
+    if not english:
+        return hits, ""
+    return portal.merge_hits(hits, index.find(english, category, picked)), english
+
+
 @app.get("/api/search")
 async def search(
     q: str = "", category: str = "", tag: list[str] = Query(default=[]),
@@ -234,10 +271,11 @@ async def search(
     """The results and the total, which is all the grid needs."""
     index = live_index()
     picked = [t for t in tag if t][:8]
-    hits = index.find(q, category, picked)
+    hits, english = await both_alphabets(index, q, category, picked)
     start = max(0, offset)
     page = hits[start:start + min(120, max(1, limit))]
-    return {"items": [i.public() for i in page], "total": len(hits)}
+    return {"items": [i.public() for i in page], "total": len(hits),
+            "translated": english}
 
 
 @app.get("/api/graph")
@@ -247,7 +285,8 @@ async def graph(
     """The tags of the current results as a web: the dots and the lines."""
     index = live_index()
     picked = [t for t in tag if t][:8]
-    return index.graph(index.find(q, category, picked), picked)
+    hits, _ = await both_alphabets(index, q, category, picked)
+    return index.graph(hits, picked)
 
 
 @app.post("/api/ask")
