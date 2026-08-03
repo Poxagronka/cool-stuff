@@ -19,7 +19,6 @@ CSS = """
   .webbar {
     display: flex; align-items: baseline; gap: 10px; padding-bottom: 8px;
   }
-  .webbar .hint { font-size: 12px; color: var(--dimmer); }
   .webclear {
     margin-left: auto; font: inherit; font-size: 12px; color: var(--dim);
     background: none; border: 0; padding: 2px 4px; cursor: pointer;
@@ -62,7 +61,6 @@ MARKUP = """
 <section class="web" aria-label="Tag web">
   <div class="webbar">
     <span class="lead">tags</span>
-    <span class="hint">the biggest tags first — pick one and the web shows what goes with it</span>
     <button class="webclear" id="webclear" type="button" hidden>× reset</button>
   </div>
   <div class="webbox" id="webbox">
