@@ -80,6 +80,8 @@ Details in `research/` and `PLAN.md`, the state of the environment in
 - The root filesystem of a Fly machine is ephemeral, state lives on the volume
   only → [knowledge/deployment/rules.md](knowledge/deployment/rules.md) R1
 - Fly health checks keep the machine awake, so there are none → same file, R5
+- And `suspend` stays over `stop`: 0.65s to resume against 9.1s to boot cold →
+  same file, R14. The memory is measured, not guessed → same file, R15
 - And therefore no timer in the app either: a frozen process has no clock, so
   the periodic work hangs off the wakes and the cron lives on the Fly side →
   same file, R12

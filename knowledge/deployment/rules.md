@@ -98,3 +98,20 @@ spelling becomes a second note, indistinguishable on the site from the first.
 `entry.note_path` settles it — it records the file the cluster owns, and every
 other note claiming the same url is a leftover. 21 of them came over in the
 saved-messages import (2026-08-03).
+
+**R14.** `suspend` is worth what it costs. Measured 2026-08-03 on the live
+machine: resuming from suspend and answering takes **0.65 s**, a cold boot from
+`stopped` takes **9.1 s**. Switching to `stop` would save the storage of the
+memory snapshot and buy nine seconds of staring at a blank page on the first
+visit after a quiet hour, so it stays on `suspend`. The idle wait before the
+proxy suspends is not tunable from `fly.toml`, so "sleep sooner" is not a lever
+either.
+
+**R15.** The memory to buy is measured, not guessed. Everything on the machine
+together is ~100 MB resident, and the heavy end — the backfill — runs from the
+laptop and never lands here (R4 in scraping). On 256 MB that leaves ~90 MB
+genuinely free, and parsing a deliberately fat 1.6 MB shop page costs ~20 MB
+on top of that. So 256 MB, not 512: the ceiling is paid for twice, once while
+awake and once in the suspend snapshot. Fly takes memory in multiples of 256,
+so there is no middle setting — if an OOM ever shows up in the logs the only
+step up is back to 512.
