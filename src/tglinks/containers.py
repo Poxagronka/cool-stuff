@@ -36,7 +36,11 @@ FANOUT = 6
 NOTION_HOSTS = ("notion.site", "notion.so", "notion.com")
 # a notion page links its own uploads by their storage address, and an image
 # somebody pasted into a wishlist is not one of the things on the wishlist
-NOTION_ASSETS = ("amazonaws.com", "notion-static.com")
+NOTION_ASSETS = ("amazonaws.com", "notion-static.com", "embed.notion.co")
+# a picture sitting next to a link illustrates that link, it is not another
+# thing on the list. notion's own uploads are caught by host above; a shop's
+# cdn is caught by what the file plainly is
+IMAGE_FILE = re.compile(r"\.(jpe?g|png|webp|gif|avif|svg|heic|bmp)$", re.I)
 BARE_UUID = re.compile(r"[0-9a-f]{32}", re.I)
 DASHED_UUID = re.compile(
     r"[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}", re.I
@@ -59,6 +63,8 @@ def _outward(urls: list[str], skip: tuple[str, ...] = ()) -> list[str]:
             continue
         host = (urlsplit(url).hostname or "").lower()
         if any(host == s or host.endswith("." + s) for s in skip):
+            continue
+        if IMAGE_FILE.search(urlsplit(url).path):
             continue
         if url in seen:
             continue

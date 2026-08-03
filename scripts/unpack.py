@@ -8,6 +8,7 @@ process the new clusters as if they had arrived that way.
 
     python scripts/unpack.py 393
     python scripts/unpack.py 675 --tag wishlist --tag vesna
+    python scripts/unpack.py --url https://x.notion.site/wishlist-… --tag sasha
 
 `--tag` marks everything that came out of one page, which is the only thing the
 categoriser cannot know: whose list it was on.
@@ -18,6 +19,7 @@ import asyncio
 import json
 import sqlite3
 import sys
+from datetime import datetime
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1] / "src"))
@@ -86,6 +88,37 @@ def add_tags(conn: sqlite3.Connection, root: Path, cluster_id: int, tags: list[s
     return True
 
 
+# a page handed to this script by name never came through telegram, so it is
+# filed under a chat that does not exist. numbering it inside a real chat would
+# put a synthetic id in the way of the saved-messages watermark
+BY_HAND = 0
+
+
+def bring_in(conn: sqlite3.Connection, url: str, author: str) -> int:
+    """Store a container the collector has never seen, and hand back its cluster.
+
+    Everything below starts from a row, and a page pasted in by the owner has
+    none. It is stored as public on purpose, for the same reason the unpacking
+    itself is: asking for a page is the decision the triage gate exists to ask
+    about, and it is not asked twice.
+    """
+    known = conn.execute(
+        "SELECT cluster_id FROM link WHERE norm_key = ? AND cluster_id IS NOT NULL LIMIT 1",
+        (canon.key(url),),
+    ).fetchone()
+    if known:
+        return known["cluster_id"]
+    seat, = conn.execute(
+        "SELECT coalesce(max(msg_id), 0) + 1 FROM message WHERE chat_id = ?", (BY_HAND,)
+    ).fetchone()
+    msg = {
+        "chat_id": BY_HAND, "msg_id": seat, "author": author, "private": False,
+        "sent_at": datetime.now().isoformat(timespec="seconds"),
+    }
+    pipeline.store_message(conn, msg)
+    return pipeline.store_link(conn, msg, url)
+
+
 def reopen(conn: sqlite3.Connection, url: str) -> int | None:
     """Put a link this script already stored back in the queue, unguarded."""
     row = conn.execute(
@@ -131,7 +164,10 @@ async def unpack(conn: sqlite3.Connection, root: Path, cluster_id: int) -> list[
 
 async def main() -> int:
     ap = argparse.ArgumentParser()
-    ap.add_argument("clusters", nargs="+", type=int, help="cluster ids to open")
+    ap.add_argument("clusters", nargs="*", type=int, help="cluster ids to open")
+    ap.add_argument("--url", action="append", default=[],
+                    help="a container the collector has never seen")
+    ap.add_argument("--by", default="Poxagronka", help="who the page belongs to")
     ap.add_argument("--tag", action="append", default=[],
                     help="tag every link that came out of the page")
     args = ap.parse_args()
@@ -140,8 +176,11 @@ async def main() -> int:
     root = Path(VAULT_PATH)
     vault.scaffold(root)
 
+    starts = list(args.clusters) + [bring_in(conn, u, args.by) for u in args.url]
+    conn.commit()
+
     touched: list[int] = []
-    for cluster_id in args.clusters:
+    for cluster_id in starts:
         touched += await unpack(conn, root, cluster_id)
 
     gate = asyncio.Semaphore(4)
