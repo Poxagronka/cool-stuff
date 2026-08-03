@@ -7,6 +7,13 @@ primary_region = "fra"
 [env]
   DB_PATH = "/data/links.db"
   VAULT_PATH = "/data/vault"
+  # the telethon user session for the saved-messages pull. on the volume
+  # because the root filesystem is ephemeral and nobody can sign in up here
+  TG_SESSION = "/data/backfill.session"
+  # minutes between saved-messages pulls. the app checks this on a wake, it
+  # never sits on a timer: a suspended machine has no clock. 0 turns the
+  # schedule off and leaves only POST /api/saved/pull
+  SAVED_EVERY_MINUTES = "180"
 
 [http_service]
   internal_port = 8443

@@ -75,3 +75,29 @@ your numeric user id. The backfill derives the private flag from the resolved
 peer rather than from the string that was typed, otherwise `--chat me` and
 `--chat @yourself` import the same messages under different rules and half of
 them walk past the gate as public.
+
+**R12.** Saved Messages are pulled on the server too, not only by hand from the
+laptop, and that needs the Telethon user session on the volume (`TG_SESSION`,
+`/data/backfill.session`). Nothing on a Fly machine can create it: Telegram
+sends a code and there is no terminal to type it into. So the file is signed in
+on the laptop and copied up, and the app treats a missing or de-authorised
+session as an error worth shouting about rather than a thing to work around —
+`SessionMissing` / `SessionRevoked`, logged at error level and answered as 503
+on the trigger route. The quiet version of that failure is what makes the noise
+worth it: a client with no login connects happily and reads an empty history,
+which looks exactly like a healthy run with nothing new in it.
+
+One session is one login. Running `scripts/backfill.py` on the laptop against
+the same session file the server is holding throws one of the two off.
+
+**R13.** The scheduled pull reads forward from a watermark in the `state` table
+(`saved_msg_id`), written after each message alongside the rows it stands for.
+An empty watermark does not mean an empty history: the first import came from
+the laptop, so the floor is `MAX(msg_id)` over the private messages already in
+the database. Starting from zero would walk years of saved links back through
+the triage gate.
+
+A cluster stored by a run that was interrupted before it wrote the note is
+past the watermark for good, so the note-writing phase queries for it
+(`status = 'new'` with every link private) rather than working off what this
+run happened to collect.

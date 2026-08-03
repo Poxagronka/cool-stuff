@@ -39,7 +39,8 @@ def configured(monkeypatch):
 
 
 def test_the_group_is_processed():
-    assert len(post(message()).tasks) == 1
+    """The note first, and then a look at whether the saved pull is due."""
+    assert [t.func for t in post(message()).tasks] == [app_module.handle, app_module.sweep]
 
 
 def test_a_dm_is_not():
@@ -53,7 +54,7 @@ def test_another_group_is_not():
 
 def test_a_username_chat_matches_by_name(monkeypatch):
     monkeypatch.setattr(app_module, "TG_CHAT", "@coolstuff")
-    assert len(post(message("-1", username="CoolStuff")).tasks) == 1
+    assert post(message("-1", username="CoolStuff")).tasks
     assert post(message("-1", username="somewhere_else")).tasks == []
 
 

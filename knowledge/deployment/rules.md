@@ -62,3 +62,17 @@ and come back with a clone; the `account`, `session` and `invite` tables do
 not exist anywhere else. Pull the old file down first
 (`flyctl ssh sftp get /data/links.db`, plus `-wal`, then checkpoint locally),
 copy those three tables into the file that is going up, and only then push it.
+
+**R12.** There is no timer in the app, and there cannot be one. `suspend` plus
+no health checks (R5) means the process is frozen between requests, so a
+`sleep(3h)` either never fires or has to hold the machine awake to fire —
+which is what R5 exists to prevent. Anything periodic hangs off the wakes that
+happen anyway: on boot and after every webhook update, the app asks a
+timestamp in the `state` table whether the job is due. The clock, when a quiet
+day needs one, lives on the Fly side — a scheduled machine that pokes
+`/health` and exits. `/health` is on the open list, so the poke carries no
+credentials; the app decides for itself whether anything happens.
+
+The corollary is that a long job can be suspended halfway through. It is not a
+crash to be prevented, it is normal operation, and the job has to be written to
+resume — see telegram R13.

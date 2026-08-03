@@ -26,6 +26,9 @@ the machine. One account is an admin (`scripts/admin.py` grants it) and can take
 a card off the site; `hidden` keeps those urls and the profile page puts them
 back. You arrive on an invite link and pick a name and a password; you
 come back through `/signin`. `brand` holds the favicon and the header glyph.
+`saved` is the scheduled pull of the owner's Saved Messages: the Telethon
+session off the volume, a watermark in `state`, one run at a time, and the
+clusters handed to the same triage gate the backfill uses.
 `scripts/backfill.py` is the one-off dump, `--saved` for Saved Messages.
 Details in `research/` and `PLAN.md`, the state of the environment in
 `SETUP.md`.
@@ -69,6 +72,14 @@ Details in `research/` and `PLAN.md`, the state of the environment in
 - The root filesystem of a Fly machine is ephemeral, state lives on the volume
   only → [knowledge/deployment/rules.md](knowledge/deployment/rules.md) R1
 - Fly health checks keep the machine awake, so there are none → same file, R5
+- And therefore no timer in the app either: a frozen process has no clock, so
+  the periodic work hangs off the wakes and the cron lives on the Fly side →
+  same file, R12
+- The saved-messages session cannot be created on the server, and a login that
+  is gone reads an empty history exactly like a healthy run does →
+  [knowledge/telegram/rules.md](knowledge/telegram/rules.md) R12
+- The saved pull reads forward from a watermark, and an empty watermark means
+  "what the laptop already imported", not zero → same file, R13
 - The image ships `scripts/` too, and `ssh console -C` needs an absolute path
   → same file, R8
 - No `WEBHOOK_SECRET` or `TG_CHAT` means the app will not boot, on purpose →

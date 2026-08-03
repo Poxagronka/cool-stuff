@@ -7,9 +7,23 @@ from dotenv import load_dotenv
 
 load_dotenv(Path(__file__).resolve().parents[2] / ".env")
 
-# telegram mtproto (backfill only) — reused from the abooks_bot account.
+# telegram mtproto — reused from the abooks_bot account. the bot api cannot
+# read saved messages at all, so both the one-off backfill and the scheduled
+# pull on the server go through a user session.
 TG_API_ID = int(os.getenv("TG_API_ID", "0"))
 TG_API_HASH = os.getenv("TG_API_HASH", "")
+
+# where that session file lives. the root filesystem of a fly machine is
+# ephemeral, so in production this has to name a path under the volume
+# (/data), or the session vanishes with the next deploy and there is no
+# terminal up there to sign in again. the suffix is forced because telethon
+# appends it anyway and the existence check has to look at the real file.
+_SESSION = os.getenv("TG_SESSION", "data/backfill.session")
+TG_SESSION = Path(_SESSION if _SESSION.endswith(".session") else _SESSION + ".session")
+
+# minutes between scheduled saved-messages pulls. 0 turns the schedule off and
+# leaves only the trigger route.
+SAVED_EVERY_MINUTES = int(os.getenv("SAVED_EVERY_MINUTES", "180"))
 
 # telegram bot api (live collection). separate bot from the abooks one:
 # a token can only carry a single webhook url.

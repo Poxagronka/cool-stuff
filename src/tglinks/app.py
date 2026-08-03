@@ -14,7 +14,7 @@ from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, Resp
 
 from . import (
     accounts, ask, authweb, brand, db, gitvault, hidden, pipeline, portal,
-    translate, urls, vault, web,
+    saved, translate, urls, vault, web,
 )
 from .config import (
     DB_PATH, GITHUB_TOKEN, SSH_KEY, TG_BOT_TOKEN, TG_CHAT, VAULT_PATH, VAULT_REPO,
@@ -66,6 +66,10 @@ async def startup() -> None:
     # index kept, so none of them can forget to leave a hidden card out
     app.state.index = portal.Index(root, hidden.all_urls(app.state.conn))
     log.info("portal index: %s notes", app.state.index.load())
+    # the machine has just woken up, which is the only moment a pull can
+    # happen at all. off the critical path: booting must not wait on telegram,
+    # and the reference is kept because a bare task can be collected mid-run
+    app.state.pull = asyncio.create_task(sweep())
 
 
 # telegram posts here and nobody is logged in for it; the rest of the door is
@@ -399,6 +403,64 @@ async def health() -> dict:
     return {"ok": True, "entries": total, "pending": pending}
 
 
+async def run_saved(why: str) -> dict:
+    """Pull Saved Messages, then do what the webhook does after a note."""
+    log.info("saved messages: pulling (%s)", why)
+    out = await saved.pull(app.state.conn, app.state.vault, writes=_lock)
+    if not out["ran"]:
+        return out
+    notes = out["notes"]
+    if notes:
+        app.state.index.load()
+        if VAULT_REPO:
+            names = ", ".join(p.stem for p in notes[:3])
+            await gitvault.commit_push(app.state.vault, f"saved: {names}")
+    log.info("saved messages: %s read, %s notes", out["seen"], len(notes))
+    return out
+
+
+async def sweep() -> None:
+    """A saved-messages pull, but only if one is due and the machine is up.
+
+    There is no timer anywhere in this process on purpose. The machine suspends
+    when nothing is talking to it and carries no health checks precisely so it
+    can (deployment R5), and a suspended process has no clock: a `sleep(3h)`
+    would either never fire or have to keep the machine awake to fire, and
+    keeping it awake is the thing R5 exists to prevent. So the schedule is
+    hung off the wakes that happen anyway — boot, and every update from the
+    chat — and the interval is enforced by a timestamp in the database rather
+    than by a loop. Something has to do the waking on a quiet day; that is a
+    cron on the fly side pinging /health, see SETUP.md.
+    """
+    try:
+        if not saved.due(app.state.conn):
+            return
+        await run_saved("the machine is awake anyway")
+    except saved.SessionTrouble as trouble:
+        # loudly: the pull reads nothing at all in this state, and reading
+        # nothing is exactly what a healthy run looks like from the outside
+        log.error("saved messages: %s", trouble)
+    except Exception:
+        log.exception("saved messages: the pull failed")
+
+
+@app.post("/api/saved/pull")
+async def pull_saved() -> dict:
+    """Pull Saved Messages now, regardless of when the last run was.
+
+    Behind the door like everything else: this route is not on OPEN_PATHS, so
+    the middleware wants a session for it (accounts R7).
+    """
+    try:
+        out = await run_saved("asked for from the site")
+    except saved.SessionTrouble as trouble:
+        raise HTTPException(status_code=503, detail=str(trouble)) from trouble
+    return {
+        "ran": out["ran"], "why": out["why"], "seen": out["seen"],
+        "notes": [p.name for p in out["notes"]],
+    }
+
+
 async def react(chat_id: int, msg_id: int, emoji: str) -> None:
     """Acknowledge in-chat without posting a message."""
     if not TG_BOT_TOKEN:
@@ -509,4 +571,8 @@ async def webhook(
             return {"ok": True}
         # answer immediately: telegram retries on timeout and that means dupes
         background.add_task(handle, msg)
+        # and while the machine is up anyway, see whether the saved messages
+        # are due. background tasks run in order, so the link that arrived
+        # gets its note first
+        background.add_task(sweep)
     return {"ok": True}
