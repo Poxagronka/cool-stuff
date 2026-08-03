@@ -199,12 +199,16 @@ def test_the_web_only_draws_the_biggest_tags(tmp_path):
 
 
 def test_where_a_link_lives_is_not_a_bubble(tmp_path):
-    """"instagram" was the biggest tag in the vault and says nothing at all."""
+    """"instagram" was the biggest tag in the vault and says nothing at all.
+
+    Neither does "brand", which named a shape and not a subject: sixteen notes
+    carried it and every one of them was a shop.
+    """
     (tmp_path / "links").mkdir()
     for i in range(6):
         (tmp_path / "links" / f"{i}.md").write_text(
             f"---\nurl: https://x.com/{i}\ndomain: x.com\ntitle: N{i}\n"
-            f"shared_at: '2025-02-01'\ntags: [instagram, video, running]\n---\n",
+            f"shared_at: '2025-02-01'\ntags: [instagram, video, brand, running]\n---\n",
             encoding="utf-8")
     index = portal.Index(tmp_path)
     index.load()
@@ -215,7 +219,7 @@ def test_where_a_link_lives_is_not_a_bubble(tmp_path):
     assert index.graph(index.items, ["instagram"])["nodes"] == [
         {"tag": "running", "count": 6}]
     # the note still carries them: they are context, just not a way in
-    assert index.items[0].tags == ["instagram", "video", "running"]
+    assert index.items[0].tags == ["instagram", "video", "brand", "running"]
 
 
 def test_a_note_carries_its_whole_front_matter_to_the_panel(tmp_path):

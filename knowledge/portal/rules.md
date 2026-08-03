@@ -71,7 +71,10 @@ steering and ending the first one's drag.
 **R7.4.** Where a link lives is not what it is about. `instagram` (36 notes),
 `youtube`, `tiktok`, `twitter`, `spotify`, `pinterest`, `wikipedia` and the
 format tags `video` and `image` were the biggest bubbles on the web and none of
-them narrows anything: every second link is on instagram. `portal.SOURCE_TAGS`
+them narrows anything: every second link is on instagram. The same goes for a
+tag naming a shape rather than a subject: `brand` sat on 16 notes, seventh
+biggest in the vault, and every one of them was a shop selling something.
+`portal.SOURCE_TAGS` and `portal.VAGUE_TAGS` join into `portal.OFF_WEB`, which
 keeps them off the web and out of `top_tags()`, so the model never plans a
 search around one either. They stay on the note and in the panel — they are
 context, just not a way in. Both counts go through `portal._ranked()`, which is

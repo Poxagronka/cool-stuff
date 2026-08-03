@@ -39,13 +39,20 @@ SOURCE_TAGS = frozenset({
     "whatsapp", "wikipedia", "x", "youtube",
 })
 
+# a shape rather than a subject. "brand" sat on 16 notes and every one of them
+# was a shop selling something: it is the seventh biggest tag in the vault and
+# narrows nothing, so it goes the same way as the platforms
+VAGUE_TAGS = frozenset({"brand"})
+
+OFF_WEB = SOURCE_TAGS | VAGUE_TAGS
+
 
 def _ranked(items: list["Item"]) -> list[tuple[str, int]]:
     """Subject tags of these items, biggest first, ties broken by name."""
     counts: dict[str, int] = {}
     for item in items:
         for tag in item.tags:
-            if tag not in SOURCE_TAGS:
+            if tag not in OFF_WEB:
                 counts[tag] = counts.get(tag, 0) + 1
     return sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
 
@@ -226,7 +233,7 @@ class Index:
         """The tags of these items as a web: who is there, and who hangs next
         to whom.
 
-        The nodes are the subject tags the current results carry — `SOURCE_TAGS`
+        The nodes are the subject tags the current results carry — `OFF_WEB`
         never makes it in — and the lines are the pairs that turn up on the same
         note. Tags already picked stay in the web, dropping them would cut the
         path you walked in on.
