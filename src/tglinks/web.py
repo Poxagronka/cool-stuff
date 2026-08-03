@@ -70,6 +70,10 @@ _PAGE = """<!doctype html>
     transition: border-color .2s var(--ease), background .2s var(--ease);
   }
   .field input::placeholder { color: var(--dimmer); }
+  /* the browser puts its own cross on a search input, painted in the system
+     accent and wired to nothing we know about. ours is the one that also
+     drops the tags and the category */
+  .field input::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
   .field input:hover { border-color: var(--line-hi); }
   .field input:focus { border-color: var(--dim); background: #141417; }
   .field .clear {
@@ -501,9 +505,7 @@ async function ask(question) {
   state.tags = p.tag ? [p.tag] : []; state.offset = 0;
   const bits = [p.query && `<b>${esc(p.query)}</b>`,
                 p.category && esc(look(NAMES, p.category))].filter(Boolean).join("  ·  ");
-  plan.innerHTML = `${esc(p.reply)}${bits ? " → " + bits : ""}
-    <span class="x" id="undo">clear</span>`;
-  $("#undo").onclick = reset;
+  plan.innerHTML = `${esc(p.reply)}${bits ? " → " + bits : ""}`;
   total = data.total;
   paint(data, true);
 }

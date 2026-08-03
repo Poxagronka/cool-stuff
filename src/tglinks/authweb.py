@@ -200,7 +200,7 @@ def profile(account, invites, base: str, error: str = "", said: str = "") -> str
     body = (
         '<div class="head">'
         f"<h1>{html.escape(account['name'])}</h1>"
-        '<a href="/">back to search</a></div>'
+        '<a href="/">&larr; back to search</a></div>'
         '<form method="post" action="/me/invite"><button>Create an invite link</button></form>'
         f"{bad}"
         '<div class="sub">invites you sent</div>'
