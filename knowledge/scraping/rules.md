@@ -150,3 +150,24 @@ key at all just ends the ladder one rung earlier. The engine must be created
 with "Search the entire web" chosen *in the create form* — the toggle is
 permanently disabled afterwards on a site-restricted engine — and "Image search"
 turned on, or `searchType=image` answers with nothing.
+
+**R16.** A social profile is closed to us (R8) but the account name is a brand,
+and a brand's site is its name with `.com` after it. `pictures.from_brand`
+guesses `https://<handle>.com`, fetches it, and takes its `og:image`. The guess
+has to be checked, and checking it *by name* is what put Oracle's `portal.com`
+on an account called `_____portal` and a psychic hotline on `keen`: a name is a
+word, and words are shared. What works is the backlink — a brand's own site
+links its instagram in the footer, so the homepage naming the profile we started
+from is the site saying it is the same brand. With that guard: 14 of 75 social
+cards, and no wrong ones (2026-08-03). Only a profile url has a handle;
+`/p/…`, `/reel/…` and `/status/…` are one post by somebody and the path never
+says who, so they are skipped before any fetch.
+
+**R17.** "This project does not have the access to Custom Search JSON API" (403)
+is not the key and not the project settings. Checked on 2026-08-03: the key was
+scoped to `customsearch.googleapis.com`, the api was `ENABLED` on that project,
+both hosts (`www.googleapis.com` and `customsearch.googleapis.com`) answered the
+same, and ten retries over several minutes did not change it. `gcloud services
+enable` returning success is about Service Usage, not about Custom Search
+letting the project in — that side has its own clock. So it is waited out, not
+debugged, and the ladder is built to work without it.

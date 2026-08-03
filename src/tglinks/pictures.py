@@ -205,6 +205,87 @@ def pick(html: str, base: str) -> str:
     return found[0][1] if found else ""
 
 
+# ---------- the tail: the brand's own site, for a page that cannot be read ----------
+
+# platforms whose pages hand over nothing, and whose first path piece is a name
+HANDLED = ("instagram.com", "x.com", "twitter.com", "tiktok.com", "threads.net", "threads.com")
+
+# first path pieces that are the platform's own furniture, not somebody's name
+NOT_A_HANDLE = frozenset({
+    "p", "reel", "reels", "explore", "stories", "tv", "s", "i", "share", "accounts",
+    "hashtag", "search", "home", "about", "tag", "video", "photo", "status", "music",
+})
+
+# a brand's site is almost always its name; the rest is guesswork not worth a fetch
+BRAND_TLDS = (".com", ".co")
+
+
+def handle_in(url: str) -> str:
+    """The account name a social link points at, or nothing.
+
+    `instagram.com/marimekko/` is a brand; `instagram.com/p/Cx12ab/` is one post
+    by somebody and the path says nothing about who.
+    """
+    parts = urlsplit(url)
+    host = (parts.hostname or "").removeprefix("www.")
+    if not any(host == h or host.endswith("." + h) for h in HANDLED):
+        return ""
+    pieces = [p for p in parts.path.split("/") if p]
+    if not pieces:
+        return ""
+    name = unquote(pieces[0]).lstrip("@").lower()
+    if name in NOT_A_HANDLE or len(name) < 3 or len(pieces) > 1 and pieces[1] not in ("", "reels"):
+        return ""
+    return name if re.fullmatch(r"[a-z0-9._-]+", name) else ""
+
+
+def _links_back(raw: str, handle: str) -> bool:
+    """Whether the site we guessed at links to the profile we started from.
+
+    Matching the name instead is what put Oracle's `portal.com` on an account
+    called `_____portal` and a psychic hotline on `keen`: a name is a word and
+    words are shared. A brand linking its own instagram in the footer is the
+    site saying it is the same brand, which is the thing being asked.
+    """
+    hosts = "|".join(h.replace(".", r"\.") for h in HANDLED)
+    return bool(re.search(rf"(?:{hosts})/@?{re.escape(handle)}(?:[/?\"'#]|$)", raw, re.I))
+
+
+async def from_brand(url: str) -> str:
+    """A picture off the brand's own homepage, for a social profile.
+
+    A profile page on instagram is closed to us — R8 — but the account name is
+    the brand, and a brand's site is its name with `.com` after it. So the guess
+    is made and then checked: the homepage has to say the brand's name back
+    before anything on it is believed, or `sasha.com` becomes Sasha's wishlist.
+    """
+    from . import enrich   # here rather than at the top: enrich is the heavy end
+
+    handle = handle_in(url)
+    if not handle:
+        return ""
+    stem = re.sub(r"[^a-z0-9]", "", handle)
+    if not stem:
+        return ""
+    for tld in BRAND_TLDS:
+        home = f"https://{stem}{tld}/"
+        try:
+            raw = await enrich.full_page(home)
+        except Exception:
+            continue
+        if not raw:
+            continue
+        if not _links_back(raw, handle):
+            continue
+        found = _absolute(enrich._from_html(raw, home).image, home)
+        if found and _plausible(found):
+            return found
+        picked = pick(raw, home)
+        if picked:
+            return picked
+    return ""
+
+
 # ---------- the tail: when the page itself gave nothing ----------
 
 SEARCH_URL = "https://www.googleapis.com/customsearch/v1"

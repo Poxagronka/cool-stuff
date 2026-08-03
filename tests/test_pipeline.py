@@ -164,6 +164,7 @@ def stub_enrichment(monkeypatch, title="Jacket", resolved="", seen=None):
     # fetch the page and then ask google about it
     monkeypatch.setattr(enrich, "full_page", no_body)
     monkeypatch.setattr(pictures, "from_search", no_body)
+    monkeypatch.setattr(pictures, "from_brand", no_body)
     monkeypatch.setattr(categorize, "classify", sorted_out)
     if resolved:
         monkeypatch.setattr(enrich, "final_url", lambda url, meta: resolved)

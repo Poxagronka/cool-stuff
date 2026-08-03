@@ -45,7 +45,10 @@ def wanting(conn: sqlite3.Connection, only: list[str]) -> list[sqlite3.Row]:
     keep = []
     for row in rows:
         host = (urlsplit(row["url"]).hostname or "").removeprefix("www.")
-        if any(host == h or host.endswith("." + h) for h in HOPELESS):
+        hopeless = any(host == h or host.endswith("." + h) for h in HOPELESS)
+        # a profile on one of them is still worth a look: the page is closed but
+        # the account name is a brand, and the brand's own site is open
+        if hopeless and not pictures.handle_in(row["url"]):
             continue
         if only and not any(o in host for o in only):
             continue
@@ -81,6 +84,10 @@ def put_in_note(root: Path, note_path: str, image: str) -> bool:
 
 async def look(row: sqlite3.Row) -> tuple[int, str, str]:
     """The best picture this page will give up, or an empty string."""
+    if pictures.handle_in(row["url"]):
+        # fetching the profile itself would only buy a login wall
+        found = await pictures.from_brand(row["url"])
+        return row["cluster_id"], row["url"], found
     try:
         raw = await asyncio.wait_for(enrich.full_page(row["url"]), 45)
     except Exception:

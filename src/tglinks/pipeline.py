@@ -344,6 +344,10 @@ async def process_entry(conn: sqlite3.Connection, cluster_id: int, vault_root: P
         if raw and want_image:
             meta.image = pictures.pick(raw, resolved)
     if not meta.image and not dead:
+        # a profile page gives up nothing, but the account name is the brand and
+        # the brand has a site of its own that does
+        meta.image = await pictures.from_brand(resolved)
+    if not meta.image and not dead:
         meta.image = await pictures.from_search(resolved, meta.title)
 
     context = context_for_cluster(conn, cluster_id)

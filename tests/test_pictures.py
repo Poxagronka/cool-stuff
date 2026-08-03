@@ -79,3 +79,28 @@ def test_no_key_means_the_tail_is_simply_not_there(monkeypatch):
 
     monkeypatch.setattr(pictures, "GOOGLE_CSE_KEY", "")
     assert asyncio.run(pictures.from_search(BASE, "Fanghorn II")) == ""
+
+
+# ---------- the brand's own site, for a profile page nothing can read ----------
+
+
+def test_handle_read_off_a_profile_url():
+    assert pictures.handle_in("https://instagram.com/marimekko/") == "marimekko"
+    assert pictures.handle_in("https://www.tiktok.com/@nordarun") == "nordarun"
+
+
+def test_a_single_post_is_not_a_handle():
+    # `/p/DY-2O9BgSZQ` is one post by somebody, and the path never says who
+    assert pictures.handle_in("https://instagram.com/p/DY-2O9BgSZQ") == ""
+    assert pictures.handle_in("https://x.com/nearcyan/status/1758276222453485738") == ""
+
+
+def test_an_ordinary_shop_url_has_no_handle():
+    assert pictures.handle_in("https://shop.example.com/products/boots") == ""
+
+
+def test_the_site_has_to_link_the_profile_back():
+    linked = '<a href="https://www.instagram.com/marimekko/">follow us</a>'
+    assert pictures._links_back(linked, "marimekko")
+    # a word two brands share is not a brand saying it is the same brand
+    assert not pictures._links_back("<title>Portal by Oracle</title>", "portal")
