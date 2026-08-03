@@ -153,3 +153,26 @@ javascript braces, so a placeholder that nobody filled in ships as the literal
 text `{sheet_js}` and the page half-works with no error anywhere. A test
 matches `(?<!\$)\{[a-z_]+\}` against the rendered page; the lookbehind is what
 keeps it from tripping over every `${name}` in the javascript.
+
+**R16.** Folding a word to latin is a bet, and the search has to know it made
+one. `textsearch.latin()` transliterates cyrillic so that "хока" and "hoka"
+meet on one term, but it runs on every word, so an ordinary russian word comes
+out as a latin string the vault has never held: "бег" becomes "beg". Nothing
+matched that, the expansion fell through to `difflib` guessing at a
+misspelling, and it answered with "be" — nine notes carry it, and none of them
+are about running. A query token therefore carries whether it was folded
+(`query_tokens`), and a folded one is expanded by exact and prefix only
+(`no_guessing`): prefix has to stay, because the vault keeps the chat's russian
+captions and "куртк" is the kurtka inside one. The wrong fixes here are adding
+"be" to `NOISE`, which patches one collision, and raising the fuzzy cutoff,
+which costs english typos their match.
+
+**R17.** A foreign query is searched in both alphabets at once, never as a
+fallback. The vault is written in english and keeps russian captions verbatim,
+so a russian word has matches on both sides; translating only after the lexical
+search came back empty meant that matching a single russian caption hid the
+whole english half. `both_alphabets()` runs the query as typed and translated
+and merges the two lists on url, each note at its best rank in either. This is
+also why R16 matters more than it looks: nine junk hits are not zero, so the
+old fallback never fired at all. Translations are memoised per query string —
+the box searches on every keystroke and MyMemory is metered by the character.
