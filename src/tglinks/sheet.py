@@ -33,15 +33,17 @@ CSS = """
   .sheet .shut {
     position: absolute; right: 12px; top: 12px; z-index: 2;
     width: 30px; height: 30px; display: grid; place-items: center;
-    font: inherit; font-size: 17px; line-height: 1; cursor: pointer;
+    padding: 0; cursor: pointer;
     color: var(--dim); background: color-mix(in srgb, var(--bg) 70%, transparent);
     border: 1px solid var(--line); border-radius: 8px;
     transition: color .18s var(--ease), border-color .18s var(--ease);
   }
   .sheet .shut:hover { color: var(--text); border-color: var(--line-hi); }
-  .sheet .shut:focus-visible, .out:focus-visible {
-    outline: 1px solid var(--text); outline-offset: 2px;
-  }
+  /* the panel puts the keyboard on this button the moment it opens, and a ring
+     drawn around it then reads as a box someone drew on the photo. the button
+     lighting up is the same signal without the frame */
+  .sheet .shut:focus-visible { color: var(--text); border-color: var(--text); }
+  .out:focus-visible { outline: 1px solid var(--text); outline-offset: 2px; }
   .sheet .hero {
     width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #17171b;
     display: block; border-bottom: 1px solid var(--line);
@@ -111,6 +113,12 @@ const OUT = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" '
   + '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/>'
   + '<path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>';
 
+// same reason as OUT: the multiplication sign sits off centre in most faces,
+// and no amount of line-height fixes it. two strokes on a square viewbox do
+const SHUT = '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" '
+  + 'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" '
+  + 'aria-hidden="true"><path d="M5 5 19 19"/><path d="M19 5 5 19"/></svg>';
+
 // a url out of a note is text a model wrote, and escaping the four characters
 // says nothing about the scheme: `javascript:alert(1)` survives esc() intact.
 // anything that is not plainly http shows as text and goes nowhere
@@ -154,7 +162,7 @@ const Sheet = (() => {
       `<blockquote><b>${esc(q.author)}</b><i>${esc(q.at || "")}</i><br>${esc(q.text)}</blockquote>`
     ).join("");
     box.innerHTML = `
-      <button class="shut" id="shut" type="button" aria-label="Close">×</button>
+      <button class="shut" id="shut" type="button" aria-label="Close">${SHUT}</button>
       ${hero}
       <div class="inner">
         <h2>${esc(it.title || it.domain)}</h2>
