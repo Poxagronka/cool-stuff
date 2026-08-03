@@ -194,10 +194,15 @@ _PAGE = """<!doctype html>
     transition: transform .5s var(--ease);
   }
   .card:hover .mark { transform: scale(1.02); }
+  /* the width has to come off the frame, which has a size, and not off the
+     stack, which is sized by this very text: a percentage against a
+     shrink-to-fit track resolves to almost nothing and clips every label */
+  .mark .stack { max-width: 84%; }
   .mark b {
-    font-size: 13px; font-weight: 500; letter-spacing: .04em;
-    color: hsl(var(--h) 30% 82%); opacity: .8;
-    max-width: 85%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+    display: block; font-size: 14px; font-weight: 500; letter-spacing: .02em;
+    text-transform: none; text-align: center;
+    color: hsl(var(--h) 30% 84%); opacity: .85;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
   }
   /* the site's own mark, if it keeps one where every site keeps it. it fails
      to load about as often as not, and failing quietly is the whole design */
@@ -335,19 +340,34 @@ function hue(domain) {
 // is not a placeholder waiting on a fix — it is the answer. the favicon is
 // asked for straight from the site, no third party in the middle, and it
 // removes itself when the site does not keep one
+// forty instagram cards all saying "instagram.com" are forty identical tiles,
+// and the platform is the least interesting fact about any of them. the brand
+// is in the title, which for these reads "BBUC Instagram" — so the platform
+// word comes off the end and what is left is the name worth showing
+const PLATFORMS = /^(instagram|x|twitter|tiktok|youtube|pinterest|t|vk|threads)\./;
+const TRAILING = /[\s—–|(-]*\b(on )?(instagram|x|twitter|tiktok|youtube)\b[\s)]*$/i;
+
+function label(it) {
+  const domain = it.domain || "";
+  if (!PLATFORMS.test(domain)) return domain;
+  const named = (it.title || "").replace(TRAILING, "").trim();
+  return named || domain;
+}
+
 function frame(it) {
   const domain = it.domain || "";
+  const said = label(it);
   const shot = it.image
     ? `<img class="shot" src="${esc(it.image)}" loading="lazy" alt=""
          onerror="this.remove()">`
     : "";
-  const mark = domain
+  const mark = said
     ? `<div class="mark"><div class="stack"
          ><img src="https://${esc(domain)}/favicon.ico" alt="" loading="lazy"
-            onerror="this.remove()"><b>${esc(domain)}</b></div></div>`
+            onerror="this.remove()"><b>${esc(said)}</b></div></div>`
     : "";
   if (!shot && !mark) return "";
-  return `<div class="frame" style="--h:${hue(domain)}">${mark}${shot}</div>`;
+  return `<div class="frame" style="--h:${hue(said)}">${mark}${shot}</div>`;
 }
 
 function card(it, i) {
