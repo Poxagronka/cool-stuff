@@ -51,6 +51,12 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   → same file, R7
 - Instagram/TikTok/Spotify/App Store are only readable through their own
   endpoints; Pinterest is not readable at all → same file, R8
+- A profile page gives no picture, so the brand's own site is guessed from the
+  handle — and the guess is checked by backlink, never by name: matching the
+  name put Oracle on an account called `_____portal` → same file, R16
+- "This project does not have the access to Custom Search JSON API" is Google's
+  own clock, not a setting: enabled api, correctly scoped key, still 403 →
+  same file, R17
 - Context stops at the next link, otherwise the description ends up on the
   wrong thing →
   [knowledge/telegram/rules.md](knowledge/telegram/rules.md) R8
