@@ -30,4 +30,7 @@ primary_region = "fra"
 
 [[vm]]
   size = "shared-cpu-1x"
-  memory = "512mb"
+  # everything on the machine adds up to about 100mb resident, and the heavy
+  # end — the backfill — runs from the laptop and never lands here. half a gig
+  # was paying for empty space, awake and in the suspend snapshot both
+  memory = "256mb"
