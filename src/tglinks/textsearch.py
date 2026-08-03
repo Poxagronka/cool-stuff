@@ -52,16 +52,33 @@ def latin(word: str) -> str:
     return "".join(TRANSLIT.get(ch, ch) for ch in word)
 
 
-def tokens(text: str) -> list[str]:
-    """The searchable words of a piece of text, folded to latin."""
+def folded(raw: str) -> bool:
+    """Whether folding this word to latin changed anything about it."""
+    return any(ch in TRANSLIT for ch in raw)
+
+
+def query_tokens(text: str) -> list[tuple[str, bool]]:
+    """The words of a query, each flagged when it was folded out of cyrillic.
+
+    The flag matters because the folding is a bet. It pays off on a name the
+    vault holds in latin — "хока" is hoka — and it produces a meaningless latin
+    string out of an ordinary russian word: "бег" becomes "beg", which the vault
+    has never heard of. Guessing at a misspelling from there answers with
+    whatever happens to be closest, and "be" always is.
+    """
     out = []
     for raw in WORD.findall((text or "")[:MAX_TEXT].lower()):
         word = latin(raw)
         if word and word not in NOISE:
-            out.append(word)
+            out.append((word, folded(raw)))
             if len(out) >= MAX_TOKENS:
                 break
     return out
+
+
+def tokens(text: str) -> list[str]:
+    """The searchable words of a piece of text, folded to latin."""
+    return [word for word, _ in query_tokens(text)]
 
 
 class Terms:
@@ -71,7 +88,7 @@ class Terms:
         self.df: dict[str, int] = {}
         self.total = 0
         self.vocab: list[str] = []
-        self.cache: dict[str, list[tuple[str, float]]] = {}
+        self.cache: dict[tuple[str, bool], list[tuple[str, float]]] = {}
 
     def add(self, words: set[str]) -> None:
         self.total += 1
@@ -86,14 +103,21 @@ class Terms:
         """A word in every note tells us nothing; a word in two notes tells us a lot."""
         return math.log(1 + self.total / max(1, self.df.get(term, 1)))
 
-    def expand(self, word: str) -> list[tuple[str, float]]:
+    def expand(self, word: str, no_guessing: bool = False) -> list[tuple[str, float]]:
         """Terms this word could mean, best first, each with what it is worth.
 
         Exact is worth all of it. A longer word starting the same way is nearly
         as good ("shoe" wanting "shoes"). Only when neither exists is it worth
         guessing at a misspelling, and only then at a word buried inside another.
+
+        `no_guessing` is for a word folded out of another alphabet. Exact and
+        prefix still hold there — "хока" is hoka, and "куртк" is the kurtka a
+        russian caption left in the vault — but a misspelling is not something
+        the typist can be said to have made about a string they never wrote.
+        Guessing anyway answers "бег" with "be"; answering nothing instead is
+        what lets the search fall back to translating the word.
         """
-        found = self.cache.get(word)
+        found = self.cache.get((word, no_guessing))
         if found is not None:
             return found
         out: dict[str, float] = {}
@@ -102,6 +126,10 @@ class Terms:
         for term in self.vocab:
             if len(term) > len(word) and term.startswith(word):
                 out.setdefault(term, 0.85)
+        if no_guessing:
+            ranked = sorted(out.items(), key=lambda kv: (-kv[1], kv[0]))[:24]
+            self._remember((word, no_guessing), ranked)
+            return ranked
         if not out:
             for term in difflib.get_close_matches(word, self.vocab, n=6, cutoff=0.8):
                 out.setdefault(term, 0.65)
@@ -110,7 +138,10 @@ class Terms:
                 if word in term:
                     out.setdefault(term, 0.5)
         ranked = sorted(out.items(), key=lambda kv: (-kv[1], kv[0]))[:24]
+        self._remember((word, no_guessing), ranked)
+        return ranked
+
+    def _remember(self, key: tuple[str, bool], ranked: list[tuple[str, float]]) -> None:
         if len(self.cache) >= MAX_CACHE:
             del self.cache[next(iter(self.cache))]
-        self.cache[word] = ranked
-        return ranked
+        self.cache[key] = ranked
