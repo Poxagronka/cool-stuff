@@ -189,3 +189,19 @@ counts, the tag web — is built from `items`, so nothing has to remember to
 filter, and no request touches the database for it. `/api/hide` and
 `/me/unhide` write the row and call `index.set_hidden()`, which is one reread of
 four hundred files for a list that changes twice a year.
+
+**R19.** The vault moves while it is being read, and every walk of it has to
+survive that. `Index._shape()` used to stat each path `rglob` handed it with
+nothing around the call, which reads as safe and is not: `rglob` is a generator,
+so the tree is listed lazily while the loop runs, and `gitvault.commit_push`
+awaits `git pull --rebase` in a subprocess the event loop is free to leave. A
+search asking whether the index is stale then walks a `links/` directory that a
+rebase is rewriting underneath it, and a path that existed a moment ago is gone
+before it is asked how old it is. Under real concurrent churn that was
+`FileNotFoundError` on 117 of 300 `_shape()` calls — a 500 out of `/api/search`
+through the handler, and through the collector an exception inside `handle()`
+before `commit_push` ever ran, with Telegram already handed its 200 and no
+retry coming. `_shape()` now skips a file it cannot stat, the same way `parse()`
+directly above it swallows `OSError` on purpose. The failure is in the safe
+direction: a missed file makes the shape come out smaller than the truth, which
+is a difference, and a difference is what makes the next check reload.

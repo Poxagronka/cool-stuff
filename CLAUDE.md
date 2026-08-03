@@ -64,6 +64,8 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   [knowledge/scraping/rules.md](knowledge/scraping/rules.md) R10
 - Clusters merge on the resolved url; the old note is deleted only when the url
   inside it proves whose it is → same file, R11
+- And the note a merge gives up can already belong to another link, so
+  `retire()` reads the url out of the file before unlinking → same file, R14
 - A wishlist is not a link, it is forty links: the page is swapped for its
   contents before the first row is written, and neither notion nor
   mywishlist.online puts those contents in the html → same file, R13
@@ -120,6 +122,9 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   `esc()` says nothing about `javascript:` → same file, R13
 - Every request takes a ticket: a late reply from the previous filter would
   otherwise append to the new results → same file, R14
+- The vault moves while it is being walked: a `git pull --rebase` deletes notes
+  out from under `rglob`, so a file that cannot be stat'd is skipped, not fatal
+  → same file, R19
 - Fly has no rename, `.env` copies empty secrets silently, and the webhook
   keeps pointing at the old host →
   [knowledge/deployment/rules.md](knowledge/deployment/rules.md) R10

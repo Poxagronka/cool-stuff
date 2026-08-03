@@ -22,10 +22,13 @@ startup and re-read after a new note is written. The machine uses the same disk
 as the collector, so there is no second source of truth.
 
 **R7.** The vault clone on the machine is one-way by default: the collector
-pushes to it but never pulls. Anything regenerated on the laptop reaches the
-portal only through the `git pull` at startup — it is there in `ensure_clone`,
-but after a push to the vault the machine has to be restarted, otherwise the
-index stays stale.
+pushes to it but never pulls. Anything regenerated on the laptop used to reach
+the portal only through the `git pull` in `ensure_clone` at startup, so a push
+to the vault meant restarting the machine or serving the old notes. It does not
+any more: `Index.stale()` compares the shape of the tree — how many notes there
+are and when the newest one was written — against what was read, at most twice
+a minute, and reloads when the two differ. A restart is no longer part of
+publishing.
 
 **R8.** The image carries `src/` and `scripts/`. Anything documented as
 "`flyctl ssh console -C ...`" has to be in it — for a while the invite script

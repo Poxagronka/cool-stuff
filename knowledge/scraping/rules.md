@@ -83,6 +83,18 @@ record. Both checks are worth keeping even though Fly runs Linux: the vault is
 authored and read on a mac. Verify by counting `entry.note_path` against files
 on disk after any bulk run — they must be equal.
 
+**R14.** A merge never takes a note another link now owns. When two clusters
+fold together (R11), the entry that loses keeps a `note_path` remembered from
+before, and by then that file can belong to somebody else — R6 gives two
+untitled tiktoks the same stem, and the second one to be written is the one the
+name now points at. So `retire()` reads the url out of the file and refuses to
+unlink it unless that url is the one it came to delete. Dropping the
+`url_of(path) != url` check does not fail loudly, it quietly unlinks a stranger's
+note and leaves an entry in the database pointing at nothing; the same shape as
+the 19 notes in R12. This is pinned by
+`tests/test_pipeline.py::test_a_merge_never_takes_a_note_another_link_now_owns`,
+which was verified by mutation — remove the check and the test fails.
+
 **R13.** Some links are not a thing, they are a list of things. A wishlist page
 holds thirty or forty shops, and stored as itself it becomes one note named
 after a person while every shop inside it stays out of the vault and out of the
