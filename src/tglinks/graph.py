@@ -101,7 +101,7 @@ const Web = (() => {
   const BUDGET = 320;
   // grabId is the finger holding the bubble: a second one on the glass must not
   // steer the first one's drag or end it
-  let hot = null, grab = null, grabId = -1, seq = 0;
+  let hot = null, grab = null, grabId = -1, seq = 0, packed = false;
   let onPick = () => {}, picked = () => [];
 
   const FACE = "ui-sans-serif, -apple-system, sans-serif";
@@ -143,8 +143,13 @@ const Web = (() => {
     unit = Math.max(56, Math.min(room, Math.min(W, H) * 0.62));
     font = Math.max(10, Math.min(15, Math.round(unit * 0.082)));
     lineH = Math.round(font * 1.3);
-    R0 = Math.max(7, unit * 0.085);
-    RK = Math.max(7, unit * 0.13);
+    // the smallest bubble is under a third of the biggest. the counts in a real
+    // vault are all within a factor of three of each other — 57 down to 21 —
+    // and the size used to be `sqrt(count / top)` of a narrow range on top of a
+    // large floor, which drew fourteen circles of the same size that then had
+    // nowhere to go
+    R0 = Math.max(6, unit * 0.05);
+    RK = Math.max(8, unit * 0.15);
   }
 
   // how many bubbles this box can hold at all. fourteen is what a laptop fits;
@@ -175,6 +180,9 @@ const Web = (() => {
 
   function apply(data) {
     latest = data;
+    // how many bubbles there are decides how tall the box is, so the room is
+    // found before anything is placed in it
+    if (stretch()) resize();
     const on = new Set(picked());
     const keep = new Set();
     const all = (data.nodes || []).filter(
@@ -188,7 +196,12 @@ const Web = (() => {
     }
     tune(drawn.length);
     ctx.font = font + "px " + FACE;
-    const top = Math.max(1, ...drawn.map(raw => raw.count || 1));
+    // the size of a bubble is where its count falls between the smallest and
+    // the biggest actually on screen, not what fraction it is of the biggest:
+    // a set of counts sitting between 21 and 57 has to use the whole range
+    const counts = drawn.map(raw => Math.max(1, raw.count | 0));
+    const top = Math.max(...counts), low = Math.min(...counts);
+    const span = Math.max(1, top - low);
     // new bubbles come in beside what is already picked, not out of the corner
     const anchor = { x: W / 2, y: H / 2 };
     const held = [...nodes.values()].filter(n => on.has(n.tag));
@@ -202,9 +215,10 @@ const Web = (() => {
       let n = nodes.get(tag);
       if (!n) { n = born(tag, anchor); nodes.set(tag, n); }
       n.count = Math.max(1, raw.count | 0);
-      n.r = R0 + RK * Math.sqrt(n.count / top);
+      n.r = R0 + RK * Math.pow((n.count - low) / span, 0.7);
       n.text = fit(tag);
       n.lw = ctx.measureText(n.text).width;
+      n.deg = 1;
       shape(n);
     }
     for (const tag of [...nodes.keys()]) if (!keep.has(tag)) nodes.delete(tag);
@@ -212,6 +226,10 @@ const Web = (() => {
       .filter(e => Array.isArray(e) && nodes.has(e[0]) && nodes.has(e[1]))
       .map(e => [nodes.get(e[0]), nodes.get(e[1]), Math.max(1, e[2] | 0)]);
     heaviest = Math.max(1, ...links.map(e => e[2]));
+    // how many threads a bubble is on. `accessories` is on ten of the forty-one
+    // and the pull of all ten together used to drag it through its neighbours,
+    // so each bubble's share of a thread is divided by how many it holds
+    for (const [a, b] of links) { a.deg++; b.deg++; }
     roster();
     kick();
   }
@@ -243,12 +261,40 @@ const Web = (() => {
     }
   }
 
-  function measure() {
+  // the height the stylesheet gives the box, before anything is asked of it
+  let floor = 0;
+
+  // more bubbles need more room, and on a narrow screen the only room left is
+  // downwards. a wide box gets its area from the width and keeps the height the
+  // stylesheet gave it; a phone has to find the same area going down. the box
+  // never shrinks below the css height — that is the shape of the page
+  function stretch() {
+    const rect = box.getBoundingClientRect();
+    if (!rect.width) return false;
+    if (!floor) floor = rect.height;
+    const want = latest ? Math.min(14, (latest.nodes || []).length) : 0;
+    // room per bubble at a size worth reading, loosely packed: a web is not a
+    // grid and it needs the space between the bubbles as much as under them
+    const need = Math.round(Math.min(620, Math.max(floor, want * 13600 / rect.width)));
+    if (Math.abs(rect.height - need) <= 2) return false;
+    box.style.height = need + "px";
+    return true;
+  }
+
+  // the box's own size into the canvas. separate from measure() because apply()
+  // needs it too: growing the box on new data and then laying the web out at
+  // the old height is how bubbles end up outside it
+  function resize() {
     const rect = box.getBoundingClientRect();
     W = Math.max(200, rect.width); H = Math.max(180, rect.height);
     const dpr = Math.min(2, devicePixelRatio || 1);
     cv.width = Math.round(W * dpr); cv.height = Math.round(H * dpr);
     ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+
+  function measure() {
+    stretch();
+    resize();
     // the sizes are a share of the box, so a box that changed size is the whole
     // layout again — including how many bubbles there is room for
     if (latest) apply(latest); else kick();
@@ -297,9 +343,10 @@ const Web = (() => {
       const d = Math.hypot(dx, dy) || 1;
       // the more two tags are said together, the shorter the thread between them
       const rest = a.r + b.r + unit * (0.18 + 0.5 * (1 - w / heaviest));
-      const f = (d - rest) * 0.012 * k;
+      const f = (d - rest) * 0.02 * k;
       const ux = dx / d * f, uy = dy / d * f;
-      a.vx += ux; a.vy += uy; b.vx -= ux; b.vy -= uy;
+      const sa = Math.sqrt(a.deg), sb = Math.sqrt(b.deg);
+      a.vx += ux / sa; a.vy += uy / sa; b.vx -= ux / sb; b.vy -= uy / sb;
     }
     let fastest = 0;
     for (const n of all) {
@@ -329,17 +376,82 @@ const Web = (() => {
     steps++;
   }
 
+  // the solver is a compromise between threads pulling in and boxes pushing
+  // apart, and on a crowded web the threads win in places: it ran out of steps
+  // with `apparel` sitting on `accessories`. so once it has stopped, the overlaps
+  // that are left are taken out by hand — no springs, no velocities, just move
+  // the pair apart until the boxes clear. this is what the eye actually judges
+  function unpack(rounds) {
+    const all = [...nodes.values()];
+    // room first, then separate: pulling the web out to the box gives the pairs
+    // that are sitting on each other somewhere to go
+    spread(all);
+    for (let pass = 0; pass < rounds; pass++) {
+      let worst = 0;
+      for (let i = 0; i < all.length; i++) {
+        const a = all[i];
+        for (let j = i + 1; j < all.length; j++) {
+          const b = all[j];
+          let dx = b.x - a.x, dy = (b.y + b.drop) - (a.y + a.drop);
+          if (!dx && !dy) { dx = seed(a.tag) - 0.5 || 0.3; dy = 0.4; }
+          const gx = a.hw + b.hw, gy = a.hh + b.hh;
+          const ox = gx - Math.abs(dx), oy = gy - Math.abs(dy);
+          if (ox <= 0 || oy <= 0) continue;
+          worst = Math.max(worst, Math.min(ox, oy));
+          if (ox / gx <= oy / gy) {
+            const s = (dx >= 0 ? 1 : -1) * (ox / 2 + 0.5);
+            a.x -= s; b.x += s;
+          } else {
+            const s = (dy >= 0 ? 1 : -1) * (oy / 2 + 0.5);
+            a.y -= s; b.y += s;
+          }
+        }
+      }
+      for (const n of all) {
+        const padX = Math.max(n.r, n.lw / 2) + 4;
+        n.x = Math.min(W - padX, Math.max(padX, n.x));
+        n.y = Math.min(H - n.r - lineH - 6, Math.max(n.r + 4, n.y));
+      }
+      if (worst < 0.5) break;
+    }
+    recentre(all, 1);
+  }
+
+  // the solver comes to rest wherever the forces balance, and on a laptop strip
+  // that was a clump 417px wide in a box of 1152 with empty sides. so the web
+  // that has settled is pulled out to the box it lives in — the two axes
+  // separately, because a strip needs the width and a phone needs the height.
+  // this only ever moves bubbles further apart, so it cannot make an overlap
+  function spread(all) {
+    if (all.length < 2) return;
+    const ends = (lo, hi) => [Math.min(...lo), Math.max(...hi)];
+    const [x0, x1] = ends(all.map(n => n.x - n.hw), all.map(n => n.x + n.hw));
+    const [y0, y1] = ends(all.map(n => n.y - n.r), all.map(n => n.y + n.r + 4 + lineH));
+    // no more than doubled: past that the threads read as lines on a chart
+    const grow = (lo, hi, room) => Math.max(1, Math.min(2, (room - 8) / Math.max(1, hi - lo)));
+    const sx = grow(x0, x1, W), sy = grow(y0, y1, H);
+    if (sx <= 1.01 && sy <= 1.01) return;
+    const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+    for (const n of all) {
+      n.x = mx + (n.x - mx) * sx;
+      n.y = my + (n.y - my) * sy;
+      const padX = Math.max(n.r, n.lw / 2) + 4;
+      n.x = Math.min(W - padX, Math.max(padX, n.x));
+      n.y = Math.min(H - n.r - lineH - 6, Math.max(n.r + 4, n.y));
+    }
+  }
+
   // eased rather than exact: snapping the whole web sideways every step reads
   // as the picture sliding around under a layout that has not settled yet
-  function recentre(all) {
+  function recentre(all, ease = 0.12) {
     if (!all.length) return;
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (const n of all) {
       x0 = Math.min(x0, n.x - n.hw); x1 = Math.max(x1, n.x + n.hw);
       y0 = Math.min(y0, n.y - n.r); y1 = Math.max(y1, n.y + n.r + 4 + lineH);
     }
-    const dx = ((W - (x1 - x0)) / 2 - x0) * 0.12;
-    const dy = ((H - (y1 - y0)) / 2 - y0) * 0.12;
+    const dx = ((W - (x1 - x0)) / 2 - x0) * ease;
+    const dy = ((H - (y1 - y0)) / 2 - y0) * ease;
     if (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05) return;
     for (const n of all) { n.x += dx; n.y += dy; }
   }
@@ -383,6 +495,9 @@ const Web = (() => {
       const dt = Math.min(2.5, (ts - last) / 16) || 1;
       last = ts;
       physics(dt);
+    } else if (!packed) {
+      packed = true;
+      unpack(24);
     }
     draw();
     // nothing drifts on its own: once the layout has come to rest the loop
@@ -399,10 +514,18 @@ const Web = (() => {
   }
 
   function kick() {
-    still = 0; steps = 0; last = 0; asleep = false;
-    // nothing may drift for someone who asked for no motion, so the layout is
-    // solved here and the loop is handed something finished to draw once
-    if (calm.matches) { settle(400); steps = BUDGET; }
+    still = 0; steps = 0; last = 0; asleep = false; packed = false;
+    // nearly all the solving happens here, not on screen. three hundred frames
+    // of fourteen bubbles hunting for their places is exactly what "the tags are
+    // going mad" was: the eye reads the search as the picture being broken. what
+    // is left over is one second of the web closing up, which reads as motion
+    // with a purpose. fourteen bubbles solved in one go costs a few milliseconds
+    const head = calm.matches ? BUDGET : BUDGET - 60;
+    settle(head);
+    steps = head;
+    // and nothing may drift at all for someone who asked for no motion, so that
+    // one gets the whole thing finished, overlaps taken out, drawn once
+    if (calm.matches) { packed = true; unpack(24); }
     if (!raf) raf = requestAnimationFrame(frame);
   }
 

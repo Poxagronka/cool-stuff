@@ -121,6 +121,10 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   room one bubble has, and a bubble is a rectangle the width of its label —
   circles that clear each other still had their words running together
   → same file, R7.3, R7.5, R7.6
+- And a settled layout is not a readable one: real counts sit within a factor of
+  three of each other, the solver runs off screen, the overlaps it leaves come
+  out by hand, and the web is pulled out to a box that grew for the crowd
+  → same file, R7.7–R7.9
 - One stylesheet in one string, so a class name used twice is a silent bug: a
   second `.mark` laid an invisible absolute box over the profile link
   → same file, R15.1

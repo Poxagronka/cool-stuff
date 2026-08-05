@@ -72,6 +72,44 @@ box aspect, which on a laptop strip came to a fifth of the y one and let the
 whole web drift out to both edges. A weak spring plus one eased translation of
 the whole set per step keeps it centred at any shape of box.
 
+**R7.7.** The counts in a real vault are all within a factor of three of each
+other, so the size of a bubble is where its count falls between the smallest and
+the biggest actually on screen — not what fraction it is of the biggest. On prod
+data (57 down to 21 links) `R0 + RK * sqrt(count / top)` drew fourteen circles
+of 27 to 36 pixels: near enough identical, and fourteen bubbles of one size have
+no reason to prefer any arrangement, which is exactly what "the tags are going
+mad" looked like. Normalising the range instead spreads them 8 to 34.
+
+**R7.8.** A settled layout is not the same thing as a readable one, and three
+of the four things that fixed this happen off screen:
+
+- The solver runs all but the last sixty steps synchronously in `kick()`. What
+  the eye read as the tags panicking was the search itself — three hundred
+  frames of bubbles hunting for their places. The sixty that are left are the
+  web closing up, which reads as motion with a purpose. Fourteen bubbles solved
+  in one go cost a few milliseconds.
+- The threads win over the separation in places and the solver stops with a pair
+  still touching, so `unpack()` takes the leftovers out by hand once it has
+  stopped — no springs, no velocities, just move the pair apart until the boxes
+  clear.
+- A hub is on many threads at once (`accessories` is on ten of the forty-one)
+  and the pull of all of them together dragged it straight through its
+  neighbours, so each bubble's share of a thread is divided by the square root
+  of how many threads it holds.
+- Where the forces balance is not where the box is. On a laptop strip the web
+  came to rest as a clump 417 pixels wide inside 1152, with empty sides. So the
+  settled web is pulled out to the box (`spread()`), the two axes separately and
+  at most doubled: a strip needs the width, a phone the height. Moving bubbles
+  apart can never create an overlap, so this is safe after `unpack()`.
+
+**R7.9.** How much room the web has is not the stylesheet's decision alone.
+`stretch()` grows the box downwards for as many bubbles as there are — the
+target is area per bubble, so a wide box already has it and keeps the height the
+css gave it, while a phone finds the same area going down (up to 620px). The box
+never shrinks below the css height, that is the shape of the page. It runs from
+`apply()` as well as from `measure()`: growing the box on new data and then
+laying the web out at the old height puts bubbles outside it.
+
 **R7.2.** Nothing on the web drifts by itself. Each bubble used to carry a
 sine-wave wobble, which meant a `requestAnimationFrame` loop that never ended,
 hit-testing against a moving target, and a picture that would not hold still

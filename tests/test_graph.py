@@ -31,6 +31,34 @@ def test_the_word_under_a_bubble_is_part_of_the_bubble():
     assert "Math.max(n.r, n.lw / 2)" in graph.JS
 
 
+def test_a_bubble_is_sized_by_where_its_count_falls_in_the_range():
+    """Fourteen tags between 21 and 57 links came out fourteen circles alike.
+
+    `sqrt(count / biggest)` of a narrow range on top of a large floor is one
+    size, and fourteen bubbles of one size have no reason to prefer any
+    arrangement — which is what "the tags are going mad" looked like.
+    """
+    assert "(n.count - low) / span" in graph.JS
+    assert "const top = Math.max(...counts), low = Math.min(...counts)" in graph.JS
+
+
+def test_the_room_and_the_overlaps_are_settled_off_screen():
+    """Three hundred frames of hunting for a place is the bug, not the fix."""
+    # the solver runs to all but the last second in one go, the leftover
+    # overlaps come out by hand, and the settled web is pulled out to the box
+    assert "const head = calm.matches ? BUDGET : BUDGET - 60" in graph.JS
+    assert "function unpack(" in graph.JS
+    assert "function spread(" in graph.JS
+    # a hub on ten threads used to be dragged straight through its neighbours
+    assert "Math.sqrt(a.deg)" in graph.JS
+
+
+def test_a_crowded_web_is_given_more_room():
+    """Fourteen bubbles in a phone-width box is not the same picture as four."""
+    assert "function stretch(" in graph.JS
+    assert "box.style.height" in graph.JS
+
+
 def test_a_box_that_changed_size_is_laid_out_again():
     """Turning a phone sideways is a different web, not the same one stretched."""
     assert "if (latest) apply(latest); else kick();" in graph.JS
