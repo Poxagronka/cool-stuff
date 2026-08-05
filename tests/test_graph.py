@@ -57,16 +57,45 @@ def test_the_bubbles_look_for_their_places_on_screen():
 
 def test_the_room_and_the_overlaps_are_taken_out_over_frames():
     """A jump on the last frame reads as the picture glitching, not settling."""
-    # the box is filled by an eased tug the threads pull against, and the
-    # leftover overlaps come out across the closing frames rather than at once
-    assert "function spread(all, ease)" in graph.JS
-    assert "grew = spread(all, 0.05 * k)" in graph.JS
+    # the box is filled by a force, and the leftover overlaps come out across
+    # the closing frames rather than all at once
+    assert "const needX = short(W, span.x1 - span.x0)" in graph.JS
     assert "function unpack(" in graph.JS
     assert "if (tidy) unpack(4, 0.5); else unpack(60, 1);" in graph.JS
-    # and the web is not called settled while it is still being pulled outwards
-    assert "still = fastest < 0.12 && grew < 0.25 ? still + 1 : 0;" in graph.JS
     # a hub on ten threads used to be dragged straight through its neighbours
     assert "Math.sqrt(a.deg)" in graph.JS
+
+
+def test_the_search_ends_by_itself():
+    """Every layout used to run the whole budget out however fast it had settled.
+
+    The tug that fills the box scaled the positions, which skips the damping and
+    so has no resting point: it pushed, the threads pulled back, and the web
+    crept on for ever. Asking the velocities could not see that, because nobody's
+    speed ever reached zero. What ends it is net movement over a window.
+    """
+    assert "n.vx += (n.x - mx) * needX" in graph.JS
+    assert "if (steps % MARK === 0)" in graph.JS
+    assert "far < MARK * 0.5" in graph.JS
+    # and the damping tightens as it goes, or the tail of it creeps on for ever
+    assert "const damp = 0.8 - 0.3 * Math.min(1, steps / 90);" in graph.JS
+    # a bubble held against a wall used to keep the speed that put it there
+    assert "if (wx !== n.x) n.vx = 0;" in graph.JS
+
+
+def test_the_web_goes_on_moving_once_it_has_found_its_shape():
+    """It must never come to a full stop — it should crawl, as if through jam.
+
+    The old sine-wave wobble was wrong about the speed, not about the idea. The
+    crawl goes in as a force, so the separation and the threads answer it and no
+    gap it opens can close on a word, and it is capped at about a pixel a frame.
+    """
+    assert "crawl = true;" in graph.JS
+    assert "const top = unit * (crawl ? 0.0055 : 0.075);" in graph.JS
+    # restarting the solver has to clear it, or the re-layout crawls too
+    assert "tidy = 12; crawl = false;" in graph.JS
+    # but someone who asked for no motion gets none
+    assert "if (calm.matches && done && !tidy) { asleep = true; return; }" in graph.JS
 
 
 def test_a_crowded_web_is_given_more_room():

@@ -117,12 +117,49 @@ never shrinks below the css height, that is the shape of the page. It runs from
 `apply()` as well as from `measure()`: growing the box on new data and then
 laying the web out at the old height puts bubbles outside it.
 
-**R7.2.** Nothing on the web drifts by itself. Each bubble used to carry a
-sine-wave wobble, which meant a `requestAnimationFrame` loop that never ended,
-hit-testing against a moving target, and a picture that would not hold still
-long enough to read. The solver now runs until the layout comes to rest and
-then the loop stops dead; hovering, dragging or picking wakes it for one frame.
-Under `prefers-reduced-motion` nothing reflows at all: taking hold of a bubble
+**R7.10.** The search has to end by itself, and for a long time it never did:
+every layout ran the whole 320-step budget out (five and a half seconds) no
+matter how quickly it had in fact found its shape. Four things were wrong, and
+all four had to go:
+
+- The outward tug that fills the box moved positions directly. That bypasses the
+  damping, so it has no resting point at all: the tug pushed, the threads pulled
+  back, and the web crept about like that for ever. As a force it fades to
+  nothing as the box fills, and where it balances the threads there is no net
+  force, so the speeds die. This is the one that mattered.
+- The rest test asked the velocities. A bubble at the top of a swing has no speed
+  either, and in the tug-of-war above nobody's speed ever reached zero. What ends
+  the search is net movement over a window of twelve steps, under half a pixel a
+  frame — motion nobody can see.
+- The damping was fixed. It now tightens from 0.8 to 0.5 across the first ninety
+  steps: lively while the bubbles are looking for their places, and no long tail
+  of the web creeping the last few pixels. Stiffer forces were the other way to
+  shorten it and they only bought a standing oscillation.
+- A bubble pressed against a wall kept the speed that put it there, so it went on
+  pushing into the glass and the whole web was recentred around it a fraction of
+  a pixel at a time. Clamping a position now zeroes that axis' speed.
+
+With those: 157 steps on a laptop, 272 on a phone, and 48 to 132 after a pick.
+The first step is also capped at `unit * 0.075` — nothing else bounds it, and
+fourteen bubbles born on top of each other threw one 164 pixels in one frame.
+
+**R7.2.** The web never stops moving, and that is on purpose ("она не должна
+вообще никогда полностью останавливаться — просто двигаться как в варенье
+медленно"). What was wrong with the old sine-wave wobble was not that it never
+ended, it was the speed: sixty bubbles each on their own wobble made a picture
+nobody could read and hit-testing chased a moving target. So the search ends —
+two or three seconds, R7.10 — and then the layout crawls: each bubble on a slow
+circle seeded off its tag, put in as a force so the threads and the separation
+answer it, under a speed ceiling of `unit * 0.0055` (about a pixel a frame,
+seven pixels a second). Measured over twenty seconds of nothing but the crawl:
+no overlap ever opens and nothing leaves the box, because the crawl is driven
+through the same forces that hold the layout together rather than added to the
+positions afterwards. Two things must be reset together when the solver is
+restarted — `crawl` and the step count — or the re-layout runs at crawling speed
+and never finishes. It stops for a hidden tab and an off-screen box
+(`IntersectionObserver`, `visibilitychange`), so a page in another tab costs
+nothing. Under `prefers-reduced-motion` it does stop dead, and nothing reflows
+at all: taking hold of a bubble
 and letting go of it only ask for a repaint, where otherwise they would re-solve
 the layout and slide the whole web around a finger. And only the pointer that
 took a bubble can move or release it — a second finger crossing the canvas was

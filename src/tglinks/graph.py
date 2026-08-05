@@ -102,6 +102,13 @@ const Web = (() => {
   // grabId is the finger holding the bubble: a second one on the glass must not
   // steer the first one's drag or end it
   let hot = null, grab = null, grabId = -1, seq = 0, tidy = 0;
+  // the web never comes to a full stop. once it has found its shape it keeps
+  // moving, very slowly — the search ends, the motion does not
+  let crawl = false;
+  // how many steps apart the layout is compared with itself to tell whether it
+  // has stopped moving. a shorter window mistakes the pause at the top of a
+  // swing for the end of the search
+  const MARK = 12;
   let onPick = () => {}, picked = () => [];
 
   const FACE = "ui-sans-serif, -apple-system, sans-serif";
@@ -350,33 +357,93 @@ const Web = (() => {
       const sa = Math.sqrt(a.deg), sb = Math.sqrt(b.deg);
       a.vx += ux / sa; a.vy += uy / sa; b.vx -= ux / sb; b.vy -= uy / sb;
     }
-    let fastest = 0;
+    // how much short of filling the box the web is, per axis. the solver comes to
+    // rest wherever the forces balance and on a laptop strip that was a clump
+    // 417px wide in a box of 1152 with empty sides, so something has to push
+    // outwards — and it has to be per axis, because a strip needs the width and
+    // a phone the height. three quarters of the box, not all of it: aiming at
+    // the whole thing pulled the web out into a ribbon
+    // the later the step, the less of its speed a bubble keeps
+    const damp = 0.8 - 0.3 * Math.min(1, steps / 90);
+    const span = extent(all);
+    const short = (room, wide) => Math.max(0, Math.min(0.5, room * 0.75 / Math.max(1, wide) - 1));
+    const needX = short(W, span.x1 - span.x0), needY = short(H, span.y1 - span.y0);
+    const mx = (span.x0 + span.x1) / 2, my = (span.y0 + span.y1) / 2;
     for (const n of all) {
+      // in the crawl there is nothing left for the forces to do — the layout is
+      // at its equilibrium — so the movement has to be driven. each bubble gets
+      // its own slow circle, seeded off its tag so no two drift together, and it
+      // goes in as a force like everything else: the threads and the separation
+      // answer it, which is what keeps the crawl from ever closing a gap
+      if (crawl) {
+        const own = seed(n.tag), turn = steps * 0.004 * (0.6 + own) + own * 6.283;
+        n.vx += Math.cos(turn) * unit * 0.0022 * k;
+        n.vy += Math.sin(turn * 1.3) * unit * 0.0022 * k;
+      }
       // what is picked sinks to the middle, the rest hangs off it
       const pull = on.has(n.tag) ? 0.011 : 0.004;
       // a wide box used to divide this by its own aspect, which on a laptop
       // strip came to a fifth and let the web drift out to both edges
       n.vx += (W / 2 - n.x) * pull * Math.max(0.3, H / W) * k;
       n.vy += (H / 2 - n.y) * pull * k;
-      n.vx *= 0.86; n.vy *= 0.86;
+      // the outward tug is a force and not a nudge to the position. scaling the
+      // positions every step read the same on screen but had no resting point at
+      // all: it moved bubbles without passing through the damping, so the threads
+      // pulled back, it pushed again, and the web crept about like that for ever
+      // — no layout ever settled and every one of them ran the budget out. as a
+      // force it fades to nothing as the box fills, and where it balances the
+      // threads there is no net force, so the speeds die and the search ends
+      if (!grab) {
+        n.vx += (n.x - mx) * needX * 0.1 * k;
+        n.vy += (n.y - my) * needY * 0.1 * k;
+      }
+      // the damping tightens as the search goes on. it opens at 0.8 — lively, but
+      // no longer the 0.86 where a bubble kept enough momentum to sail past its
+      // place and come back — and closes at 0.5, which kills the long tail of the
+      // web creeping the last few pixels. stiffer forces were the other way to
+      // shorten it and they only bought a standing oscillation
+      n.vx *= damp; n.vy *= damp;
       if (grab === n) { n.vx = 0; n.vy = 0; continue; }
+      // and a speed limit on top, because none of the above bounds the first
+      // step: fourteen bubbles born on top of each other threw one of them 164px
+      // in a single frame, which is the flinging about the whole complaint was
+      // in the crawl the ceiling is a fiftieth of that: slow enough to read the
+      // words over, slow enough to put a finger on a bubble, but never nothing
+      const top = unit * (crawl ? 0.0055 : 0.075);
+      const fast = Math.hypot(n.vx, n.vy);
+      if (fast > top) { n.vx = n.vx / fast * top; n.vy = n.vy / fast * top; }
       n.x += n.vx * k; n.y += n.vy * k;
       // the word is wider than the bubble, so what the sides hold in is the
       // word: keeping the centre inside was cutting labels off at both edges
       const padX = Math.max(n.r, n.lw / 2) + 4;
-      n.x = Math.min(W - padX, Math.max(padX, n.x));
+      const wx = Math.min(W - padX, Math.max(padX, n.x));
       // and it hangs below, so the floor is a line of type further up
-      n.y = Math.min(H - n.r - lineH - 6, Math.max(n.r + 4, n.y));
-      fastest = Math.max(fastest, Math.abs(n.vx) + Math.abs(n.vy));
+      const wy = Math.min(H - n.r - lineH - 6, Math.max(n.r + 4, n.y));
+      // a bubble held against a wall used to keep the speed that put it there,
+      // so it went on pressing into the glass for the rest of the run and the
+      // whole web kept being recentred around it a fraction of a pixel at a time
+      if (wx !== n.x) n.vx = 0;
+      if (wy !== n.y) n.vy = 0;
+      n.x = wx; n.y = wy;
     }
-    // the web is put in the middle as one thing, and opened out to the box as
-    // one thing. a spring on every bubble pulling at the centre either leaves
-    // half a wide box empty or knots everything up in the narrow one, and which
-    // of the two it does depends on the shape of the box
-    let grew = 0;
-    if (!grab) { grew = spread(all, 0.05 * k); recentre(all); }
-    still = fastest < 0.12 && grew < 0.25 ? still + 1 : 0;
+    // the web is put in the middle as one thing: a spring on every bubble pulling
+    // at the centre either leaves half a wide box empty or knots everything up in
+    // the narrow one, and which of the two it does depends on the shape of the box
+    if (!grab) recentre(all);
     steps++;
+    // has anything actually gone anywhere since the last checkpoint. this is what
+    // ends the search, rather than the speeds: a bubble at the top of a swing has
+    // no speed either, and one window is long enough to tell those apart
+    if (steps % MARK === 0) {
+      let far = 0;
+      for (const n of all) {
+        if (n.mx !== undefined) far = Math.max(far, Math.hypot(n.x - n.mx, n.y - n.my));
+        n.mx = n.x; n.my = n.y;
+      }
+      // half a pixel a frame is not motion anyone can see, and holding out for
+              // less than that is how the search used to run its whole budget out
+      still = steps > MARK && far < MARK * 0.5 ? still + 1 : 0;
+    }
   }
 
   // the solver is a compromise between threads pulling in and boxes pushing
@@ -420,55 +487,22 @@ const Web = (() => {
     recentre(all, 1);
   }
 
-  // the solver comes to rest wherever the forces balance, and on a laptop strip
-  // that was a clump 417px wide in a box of 1152 with empty sides. so the web is
-  // pulled out to the box it lives in — the two axes separately, because a strip
-  // needs the width and a phone needs the height. a little of it per step rather
-  // than all of it at the end: the same scale snapped on once the layout had
-  // settled read as the picture glitching, where eased it is the web opening up.
-  // it only ever moves bubbles further apart, so it cannot make an overlap
-  function spread(all, ease) {
-    if (all.length < 2) return 0;
+  // how much room the web takes up: what the sides have to hold in is the word
+  // under the bubble, which is wider than the bubble and hangs below it
+  function extent(all) {
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (const n of all) {
       x0 = Math.min(x0, n.x - n.hw); x1 = Math.max(x1, n.x + n.hw);
       y0 = Math.min(y0, n.y - n.r); y1 = Math.max(y1, n.y + n.r + 4 + lineH);
     }
-    // no more than doubled: past that the threads read as lines on a chart
-    // three quarters of the box, not all of it. this is a steady outward tug the
-    // threads pull against, and where the two balance is where the web sits: a
-    // ceiling on the whole expansion instead just let the springs draw it all
-    // back in the moment the tug stopped, and aiming at the full box pulled it
-    // out into a ribbon with `outdoor-gear` alone in a corner
-    const grow = (lo, hi, room) =>
-      1 + (Math.max(1, Math.min(2, room * 0.75 / Math.max(1, hi - lo))) - 1) * ease;
-    const sx = grow(x0, x1, W), sy = grow(y0, y1, H);
-    if (sx <= 1.0005 && sy <= 1.0005) return 0;
-    const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
-    // how far this pushed the outermost bubble. the layout counts as at rest
-    // only when the velocities have died down AND the web has finished opening:
-    // spread moves positions without touching a velocity, so on its own it would
-    // let the loop declare itself done halfway through the expansion
-    const step = Math.max((sx - 1) * (x1 - x0), (sy - 1) * (y1 - y0)) / 2;
-    for (const n of all) {
-      n.x = mx + (n.x - mx) * sx;
-      n.y = my + (n.y - my) * sy;
-      const padX = Math.max(n.r, n.lw / 2) + 4;
-      n.x = Math.min(W - padX, Math.max(padX, n.x));
-      n.y = Math.min(H - n.r - lineH - 6, Math.max(n.r + 4, n.y));
-    }
-    return step;
+    return { x0, x1, y0, y1 };
   }
 
   // eased rather than exact: snapping the whole web sideways every step reads
   // as the picture sliding around under a layout that has not settled yet
   function recentre(all, ease = 0.12) {
     if (!all.length) return;
-    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
-    for (const n of all) {
-      x0 = Math.min(x0, n.x - n.hw); x1 = Math.max(x1, n.x + n.hw);
-      y0 = Math.min(y0, n.y - n.r); y1 = Math.max(y1, n.y + n.r + 4 + lineH);
-    }
+    const { x0, x1, y0, y1 } = extent(all);
     const dx = ((W - (x1 - x0)) / 2 - x0) * ease;
     const dy = ((H - (y1 - y0)) / 2 - y0) * ease;
     if (Math.abs(dx) < 0.05 && Math.abs(dy) < 0.05) return;
@@ -509,7 +543,7 @@ const Web = (() => {
   function frame(ts) {
     raf = 0;
     if (asleep) return;
-    const done = still > 20 || steps >= BUDGET;
+    const done = still >= 2 || steps >= BUDGET;
     if (!done) {
       const dt = Math.min(2.5, (ts - last) / 16) || 1;
       last = ts;
@@ -518,15 +552,20 @@ const Web = (() => {
       tidy--;
       // most of the tidying is spread over these frames at part strength so it
       // reads as the web settling, and the last of them closes whatever is left
-      // outright: part strength alone did not always converge, and the thing
-      // that has to be true when the motion stops is that no two words touch
+      // outright: part strength alone did not always converge, and what has to be
+      // true before the crawl begins is that no two words touch
       if (tidy) unpack(4, 0.5); else unpack(60, 1);
+    } else {
+      // and then it never stops. the search is over — it found its shape in a
+      // couple of seconds — but the web goes on moving through it as if through
+      // jam. this is deliberate: the loop used to halt dead here
+      crawl = true;
+      physics(0.5);
     }
     draw();
-    // nothing drifts on its own: once the layout has come to rest and the last
-    // overlaps are out the loop stops dead, and hovering, dragging or picking
-    // wakes it for a frame
-    if (done && !tidy) { asleep = true; return; }
+    // except for someone who asked for no motion. for them the layout is solved,
+    // drawn once and left alone, and hovering or picking wakes it for a frame
+    if (calm.matches && done && !tidy) { asleep = true; return; }
     raf = requestAnimationFrame(frame);
   }
 
@@ -538,7 +577,7 @@ const Web = (() => {
   }
 
   function kick() {
-    still = 0; steps = 0; last = 0; asleep = false; tidy = 12;
+    still = 0; steps = 0; last = 0; asleep = false; tidy = 12; crawl = false;
     // the solving is the animation and it belongs on screen: bubbles finding
     // their places is the whole character of the thing. solving it off screen
     // first and showing the last second of it was quicker and dead. what made

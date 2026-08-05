@@ -115,8 +115,10 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   runs again without it → same file, R5.2
 - The tag web is a canvas because tag strings are model-written text off the
   web, and nothing off the web is parsed as markup → same file, R8
-- The web draws fourteen bubbles, not sixty, and nothing on it drifts on its
-  own: both were what made it unreadable → same file, R7.1–R7.3
+- The web draws fourteen bubbles, not sixty — that, not the drifting, is what
+  made it unreadable. It does drift, on purpose: the search ends in a couple of
+  seconds and then the layout crawls at a pixel a frame, for ever
+  → same file, R7.1–R7.3, R7.10
 - Fourteen is what a laptop holds. Every length in the web is a share of the
   room one bubble has, and a bubble is a rectangle the width of its label —
   circles that clear each other still had their words running together
