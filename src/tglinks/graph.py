@@ -101,7 +101,7 @@ const Web = (() => {
   const BUDGET = 320;
   // grabId is the finger holding the bubble: a second one on the glass must not
   // steer the first one's drag or end it
-  let hot = null, grab = null, grabId = -1, seq = 0, packed = false;
+  let hot = null, grab = null, grabId = -1, seq = 0, tidy = 0;
   let onPick = () => {}, picked = () => [];
 
   const FACE = "ui-sans-serif, -apple-system, sans-serif";
@@ -327,12 +327,14 @@ const Web = (() => {
         const ox = gx - Math.abs(dx), oy = gy - Math.abs(by - ay);
         if (ox > 0 && oy > 0) {
           // a soft floor rather than a hard one: stiff enough and the pair just
-          // bounces off each other forever instead of coming to rest
+          // bounces off each other forever instead of coming to rest. but it has
+          // to outweigh a picked tag pulling its whole neighbourhood into the
+          // middle, which at a fifth of the overlap it did not
           if (ox / gx <= oy / gy) {
-            const s = (dx >= 0 ? 1 : -1) * ox * 0.22 * k;
+            const s = (dx >= 0 ? 1 : -1) * ox * 0.34 * k;
             a.vx -= s; b.vx += s;
           } else {
-            const s = (by >= ay ? 1 : -1) * oy * 0.22 * k;
+            const s = (by >= ay ? 1 : -1) * oy * 0.34 * k;
             a.vy -= s; b.vy += s;
           }
         }
@@ -367,12 +369,13 @@ const Web = (() => {
       n.y = Math.min(H - n.r - lineH - 6, Math.max(n.r + 4, n.y));
       fastest = Math.max(fastest, Math.abs(n.vx) + Math.abs(n.vy));
     }
-    // the web is put in the middle as one thing. a spring on every bubble
-    // pulling at the centre either leaves half a wide box empty or knots
-    // everything up in the narrow one, and which of the two it does depends on
-    // the shape of the box
-    if (!grab) recentre(all);
-    still = fastest < 0.12 ? still + 1 : 0;
+    // the web is put in the middle as one thing, and opened out to the box as
+    // one thing. a spring on every bubble pulling at the centre either leaves
+    // half a wide box empty or knots everything up in the narrow one, and which
+    // of the two it does depends on the shape of the box
+    let grew = 0;
+    if (!grab) { grew = spread(all, 0.05 * k); recentre(all); }
+    still = fastest < 0.12 && grew < 0.25 ? still + 1 : 0;
     steps++;
   }
 
@@ -380,12 +383,12 @@ const Web = (() => {
   // apart, and on a crowded web the threads win in places: it ran out of steps
   // with `apparel` sitting on `accessories`. so once it has stopped, the overlaps
   // that are left are taken out by hand — no springs, no velocities, just move
-  // the pair apart until the boxes clear. this is what the eye actually judges
-  function unpack(rounds) {
+  // the pair apart until the boxes clear. this is what the eye actually judges.
+  // `push` is how much of the gap to close in one call: the loop spends its last
+  // few frames on this at part strength, so the tidying looks like the web
+  // settling rather than a jump the moment the motion stops
+  function unpack(rounds, push) {
     const all = [...nodes.values()];
-    // room first, then separate: pulling the web out to the box gives the pairs
-    // that are sitting on each other somewhere to go
-    spread(all);
     for (let pass = 0; pass < rounds; pass++) {
       let worst = 0;
       for (let i = 0; i < all.length; i++) {
@@ -399,10 +402,10 @@ const Web = (() => {
           if (ox <= 0 || oy <= 0) continue;
           worst = Math.max(worst, Math.min(ox, oy));
           if (ox / gx <= oy / gy) {
-            const s = (dx >= 0 ? 1 : -1) * (ox / 2 + 0.5);
+            const s = (dx >= 0 ? 1 : -1) * (ox / 2 + 0.5) * push;
             a.x -= s; b.x += s;
           } else {
-            const s = (dy >= 0 ? 1 : -1) * (oy / 2 + 0.5);
+            const s = (dy >= 0 ? 1 : -1) * (oy / 2 + 0.5) * push;
             a.y -= s; b.y += s;
           }
         }
@@ -418,20 +421,35 @@ const Web = (() => {
   }
 
   // the solver comes to rest wherever the forces balance, and on a laptop strip
-  // that was a clump 417px wide in a box of 1152 with empty sides. so the web
-  // that has settled is pulled out to the box it lives in — the two axes
-  // separately, because a strip needs the width and a phone needs the height.
-  // this only ever moves bubbles further apart, so it cannot make an overlap
-  function spread(all) {
-    if (all.length < 2) return;
-    const ends = (lo, hi) => [Math.min(...lo), Math.max(...hi)];
-    const [x0, x1] = ends(all.map(n => n.x - n.hw), all.map(n => n.x + n.hw));
-    const [y0, y1] = ends(all.map(n => n.y - n.r), all.map(n => n.y + n.r + 4 + lineH));
+  // that was a clump 417px wide in a box of 1152 with empty sides. so the web is
+  // pulled out to the box it lives in — the two axes separately, because a strip
+  // needs the width and a phone needs the height. a little of it per step rather
+  // than all of it at the end: the same scale snapped on once the layout had
+  // settled read as the picture glitching, where eased it is the web opening up.
+  // it only ever moves bubbles further apart, so it cannot make an overlap
+  function spread(all, ease) {
+    if (all.length < 2) return 0;
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const n of all) {
+      x0 = Math.min(x0, n.x - n.hw); x1 = Math.max(x1, n.x + n.hw);
+      y0 = Math.min(y0, n.y - n.r); y1 = Math.max(y1, n.y + n.r + 4 + lineH);
+    }
     // no more than doubled: past that the threads read as lines on a chart
-    const grow = (lo, hi, room) => Math.max(1, Math.min(2, (room - 8) / Math.max(1, hi - lo)));
+    // three quarters of the box, not all of it. this is a steady outward tug the
+    // threads pull against, and where the two balance is where the web sits: a
+    // ceiling on the whole expansion instead just let the springs draw it all
+    // back in the moment the tug stopped, and aiming at the full box pulled it
+    // out into a ribbon with `outdoor-gear` alone in a corner
+    const grow = (lo, hi, room) =>
+      1 + (Math.max(1, Math.min(2, room * 0.75 / Math.max(1, hi - lo))) - 1) * ease;
     const sx = grow(x0, x1, W), sy = grow(y0, y1, H);
-    if (sx <= 1.01 && sy <= 1.01) return;
+    if (sx <= 1.0005 && sy <= 1.0005) return 0;
     const mx = (x0 + x1) / 2, my = (y0 + y1) / 2;
+    // how far this pushed the outermost bubble. the layout counts as at rest
+    // only when the velocities have died down AND the web has finished opening:
+    // spread moves positions without touching a velocity, so on its own it would
+    // let the loop declare itself done halfway through the expansion
+    const step = Math.max((sx - 1) * (x1 - x0), (sy - 1) * (y1 - y0)) / 2;
     for (const n of all) {
       n.x = mx + (n.x - mx) * sx;
       n.y = my + (n.y - my) * sy;
@@ -439,6 +457,7 @@ const Web = (() => {
       n.x = Math.min(W - padX, Math.max(padX, n.x));
       n.y = Math.min(H - n.r - lineH - 6, Math.max(n.r + 4, n.y));
     }
+    return step;
   }
 
   // eased rather than exact: snapping the whole web sideways every step reads
@@ -495,14 +514,19 @@ const Web = (() => {
       const dt = Math.min(2.5, (ts - last) / 16) || 1;
       last = ts;
       physics(dt);
-    } else if (!packed) {
-      packed = true;
-      unpack(24);
+    } else if (tidy > 0) {
+      tidy--;
+      // most of the tidying is spread over these frames at part strength so it
+      // reads as the web settling, and the last of them closes whatever is left
+      // outright: part strength alone did not always converge, and the thing
+      // that has to be true when the motion stops is that no two words touch
+      if (tidy) unpack(4, 0.5); else unpack(60, 1);
     }
     draw();
-    // nothing drifts on its own: once the layout has come to rest the loop
-    // stops dead, and hovering, dragging or picking wakes it for a frame
-    if (done) { asleep = true; return; }
+    // nothing drifts on its own: once the layout has come to rest and the last
+    // overlaps are out the loop stops dead, and hovering, dragging or picking
+    // wakes it for a frame
+    if (done && !tidy) { asleep = true; return; }
     raf = requestAnimationFrame(frame);
   }
 
@@ -514,18 +538,16 @@ const Web = (() => {
   }
 
   function kick() {
-    still = 0; steps = 0; last = 0; asleep = false; packed = false;
-    // nearly all the solving happens here, not on screen. three hundred frames
-    // of fourteen bubbles hunting for their places is exactly what "the tags are
-    // going mad" was: the eye reads the search as the picture being broken. what
-    // is left over is one second of the web closing up, which reads as motion
-    // with a purpose. fourteen bubbles solved in one go costs a few milliseconds
-    const head = calm.matches ? BUDGET : BUDGET - 60;
-    settle(head);
-    steps = head;
-    // and nothing may drift at all for someone who asked for no motion, so that
-    // one gets the whole thing finished, overlaps taken out, drawn once
-    if (calm.matches) { packed = true; unpack(24); }
+    still = 0; steps = 0; last = 0; asleep = false; tidy = 12;
+    // the solving is the animation and it belongs on screen: bubbles finding
+    // their places is the whole character of the thing. solving it off screen
+    // first and showing the last second of it was quicker and dead. what made
+    // it look broken was never the search, it was fourteen circles of the same
+    // size with nothing to choose between arrangements, and a scale snapped on
+    // at the end — both fixed elsewhere
+    // nothing may move at all for someone who asked for no motion, so that one
+    // gets the whole thing solved here, overlaps taken out, and drawn once
+    if (calm.matches) { settle(BUDGET); steps = BUDGET; tidy = 0; unpack(24, 1); }
     if (!raf) raf = requestAnimationFrame(frame);
   }
 

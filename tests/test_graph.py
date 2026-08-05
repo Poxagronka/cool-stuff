@@ -42,13 +42,29 @@ def test_a_bubble_is_sized_by_where_its_count_falls_in_the_range():
     assert "const top = Math.max(...counts), low = Math.min(...counts)" in graph.JS
 
 
-def test_the_room_and_the_overlaps_are_settled_off_screen():
-    """Three hundred frames of hunting for a place is the bug, not the fix."""
-    # the solver runs to all but the last second in one go, the leftover
-    # overlaps come out by hand, and the settled web is pulled out to the box
-    assert "const head = calm.matches ? BUDGET : BUDGET - 60" in graph.JS
+def test_the_bubbles_look_for_their_places_on_screen():
+    """The search is the animation, so the whole budget of it is watchable.
+
+    Solving off screen and showing only the settled result was quicker and
+    dead. What made the web look broken was never the search — it was circles
+    of one size with nothing to choose between arrangements, and a scale
+    snapped on at the end. Only someone who asked for no motion gets the
+    layout solved before it is drawn.
+    """
+    assert "if (calm.matches) { settle(BUDGET); steps = BUDGET;" in graph.JS
+    assert "const head = calm.matches" not in graph.JS
+
+
+def test_the_room_and_the_overlaps_are_taken_out_over_frames():
+    """A jump on the last frame reads as the picture glitching, not settling."""
+    # the box is filled by an eased tug the threads pull against, and the
+    # leftover overlaps come out across the closing frames rather than at once
+    assert "function spread(all, ease)" in graph.JS
+    assert "grew = spread(all, 0.05 * k)" in graph.JS
     assert "function unpack(" in graph.JS
-    assert "function spread(" in graph.JS
+    assert "if (tidy) unpack(4, 0.5); else unpack(60, 1);" in graph.JS
+    # and the web is not called settled while it is still being pulled outwards
+    assert "still = fastest < 0.12 && grew < 0.25 ? still + 1 : 0;" in graph.JS
     # a hub on ten threads used to be dragged straight through its neighbours
     assert "Math.sqrt(a.deg)" in graph.JS
 

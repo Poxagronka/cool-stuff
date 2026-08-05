@@ -80,27 +80,34 @@ of 27 to 36 pixels: near enough identical, and fourteen bubbles of one size have
 no reason to prefer any arrangement, which is exactly what "the tags are going
 mad" looked like. Normalising the range instead spreads them 8 to 34.
 
-**R7.8.** A settled layout is not the same thing as a readable one, and three
-of the four things that fixed this happen off screen:
+**R7.8.** A settled layout is not the same thing as a readable one. Three things
+fix that, and none of them may cost the search:
 
-- The solver runs all but the last sixty steps synchronously in `kick()`. What
-  the eye read as the tags panicking was the search itself — three hundred
-  frames of bubbles hunting for their places. The sixty that are left are the
-  web closing up, which reads as motion with a purpose. Fourteen bubbles solved
-  in one go cost a few milliseconds.
+- The three hundred and twenty frames of bubbles hunting for their places are
+  the animation, not the bug. They were once solved off screen in `kick()` and
+  only the last sixty shown; it was quicker and it was dead — "very boring,
+  doesn't look like a web at all". Only `prefers-reduced-motion` still solves
+  before the first draw. What the eye read as the tags panicking was never the
+  search: it was fourteen circles of the same size (R7.7) with nothing to choose
+  between arrangements, and a scale snapped on at the end.
 - The threads win over the separation in places and the solver stops with a pair
-  still touching, so `unpack()` takes the leftovers out by hand once it has
-  stopped — no springs, no velocities, just move the pair apart until the boxes
-  clear.
+  still touching, so `unpack()` takes the leftovers out by hand — no springs, no
+  velocities, just move the pair apart until the boxes clear. It runs across the
+  closing twelve frames at part strength and then once outright: part strength
+  alone did not always converge, and one full pass on the last frame reads as
+  the picture glitching rather than the web settling.
+- Where the forces balance is not where the box is. On a laptop strip the web
+  came to rest as a clump 417 pixels wide inside 1152, with empty sides. So
+  `spread()` tugs it towards 75% of the box from inside `physics()`, eased, both
+  axes separately and at most doubled — a permanent target the threads pull
+  against, not a one-shot scale. Two things it must keep: the tug counts towards
+  "not at rest yet" (`grew`), or the web falls asleep mid-expansion; and a
+  cumulative cap does not work, the springs simply draw the web back in once the
+  cap is reached.
 - A hub is on many threads at once (`accessories` is on ten of the forty-one)
   and the pull of all of them together dragged it straight through its
   neighbours, so each bubble's share of a thread is divided by the square root
   of how many threads it holds.
-- Where the forces balance is not where the box is. On a laptop strip the web
-  came to rest as a clump 417 pixels wide inside 1152, with empty sides. So the
-  settled web is pulled out to the box (`spread()`), the two axes separately and
-  at most doubled: a strip needs the width, a phone the height. Moving bubbles
-  apart can never create an overlap, so this is safe after `unpack()`.
 
 **R7.9.** How much room the web has is not the stylesheet's decision alone.
 `stretch()` grows the box downwards for as many bubbles as there are — the
