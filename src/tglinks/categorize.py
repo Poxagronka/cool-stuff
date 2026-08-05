@@ -16,6 +16,11 @@ CHAIN = os.getenv(
     "anthropic/claude-sonnet-5",
 )
 
+# how many tags a note carries. six of them, on a vault this size, meant most
+# tags sat on one link each and the web had nothing to draw. the prompt below
+# says the word rather than the number, so the two move together
+TAGS = 10
+
 SYSTEM = f"""You sort links from a friends' group chat into a knowledge base.
 
 Categories (pick EXACTLY ONE):
@@ -40,7 +45,18 @@ Rules:
   chat matters more than the site's own blurb. Never copy og:description. If
   page text is given, describe the actual thing from it — not "a link to an
   app" and not "could not determine".
-- tags: up to 6, lowercase kebab-case, no hashes.
+- tags: ten of them, lowercase kebab-case, no hashes. A tag is worth writing
+  only if other links will carry it too — it is a shelf, not a description.
+  - The FIRST is the plain broad word for what this is: `music`, `radio`,
+    `clothing`, `coffee`. Then the narrower ones.
+  - Never glue a place or a brand onto the kind. `athens-radio` is one link for
+    ever; write `radio` and `athens` and both gather.
+  - Never say the same thing twice in different words. With `radio` on the
+    note, `online-radio` adds nothing.
+  - Real narrow tags are wanted: `experimental-music`, `ambient`,
+    `gore-tex`, `filter-coffee` say something `radio` does not.
+  - Kind, genre, material, use, audience, city, era — ten different angles on
+    the thing, not ten spellings of one.
 - keywords: 6-12 search words, ENGLISH only, even for a russian page. What the
   thing is, what it is made of, what it is for, and the synonyms someone might
   type instead: a jacket is also a "shell", a "windbreaker", a "parka". Brand,
@@ -52,7 +68,7 @@ SCHEMA = {
     "type": "object",
     "properties": {
         "category": {"type": "string", "enum": CATEGORIES},
-        "tags": {"type": "array", "items": {"type": "string"}, "maxItems": 6},
+        "tags": {"type": "array", "items": {"type": "string"}, "maxItems": TAGS},
         "title": {"type": "string"},
         "description": {"type": "string"},
         # search words the note itself would not contain: synonyms, materials,
@@ -122,7 +138,8 @@ def coerce(data: dict) -> dict:
     if out["category"] not in CATEGORIES:
         out["category"] = "misc"
         out["confidence"] = "low"
-    out["tags"] = [t.lstrip("#").lower() for t in listed(out["tags"])[:6]]
+    tags = [t.lstrip("#").lower() for t in listed(out["tags"])[:TAGS]]
+    out["tags"] = list(dict.fromkeys(tags))
     words = [k.lower() for k in listed(out["keywords"])[:12]]
     out["keywords"] = list(dict.fromkeys(words))
     if out["confidence"] not in ("high", "medium", "low"):
