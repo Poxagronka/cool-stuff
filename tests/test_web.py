@@ -44,6 +44,18 @@ def test_a_card_is_not_a_button_holding_buttons():
     assert 'class="t" data-open=' in web.PAGE
 
 
+def test_no_two_rules_answer_to_the_same_class_name():
+    """A second `.mark` rule for the card tile won over the header wordmark.
+
+    It carried `position: absolute; inset: 0`, so the words "cool stuff" became
+    a box the width of the header sitting on top of the profile link, and the
+    link stopped taking clicks. Every class the page styles is declared once.
+    """
+    seen = re.findall(r"^\s{2}((?:\.[a-z][a-z-]*)+) \{", web.PAGE, re.M)
+    twice = {name for name in seen if seen.count(name) > 1}
+    assert not twice, twice
+
+
 def test_a_lookup_table_is_never_indexed_blind():
     """`category: __proto__` fetched something inherited and broke the panel."""
     assert "Object.hasOwn" in web.PAGE

@@ -117,6 +117,13 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   web, and nothing off the web is parsed as markup → same file, R8
 - The web draws fourteen bubbles, not sixty, and nothing on it drifts on its
   own: both were what made it unreadable → same file, R7.1–R7.3
+- Fourteen is what a laptop holds. Every length in the web is a share of the
+  room one bubble has, and a bubble is a rectangle the width of its label —
+  circles that clear each other still had their words running together
+  → same file, R7.3, R7.5, R7.6
+- One stylesheet in one string, so a class name used twice is a silent bug: a
+  second `.mark` laid an invisible absolute box over the profile link
+  → same file, R15.1
 - A card is not a link. Only the domain chip leaves for the site, and the
   handler order tag → anchor → card is what keeps that true → same file, R10
 - A card is not a button either: the title inside it is, because a button

@@ -186,19 +186,21 @@ _PAGE = """<!doctype html>
      the colour comes off the domain, so a shop looks the same on every card */
   .frame { position: relative; width: 100%; aspect-ratio: 16 / 9; overflow: hidden; }
   .frame .shot { position: absolute; inset: 0; height: 100%; aspect-ratio: auto; }
-  .mark {
+  /* `tile`, not `mark`: the header wordmark is a `.mark` too, and an absolute
+     box named the same stretched over the header and swallowed the profile link */
+  .tile {
     position: absolute; inset: 0; display: grid; place-items: center;
     background:
       radial-gradient(120% 140% at 20% 0%,
         hsl(var(--h) 32% 26%) 0%, hsl(var(--h) 24% 13%) 70%);
     transition: transform .5s var(--ease);
   }
-  .card:hover .mark { transform: scale(1.02); }
+  .card:hover .tile { transform: scale(1.02); }
   /* the width has to come off the frame, which has a size, and not off the
      stack, which is sized by this very text: a percentage against a
      shrink-to-fit track resolves to almost nothing and clips every label */
-  .mark .stack { max-width: 84%; }
-  .mark b {
+  .tile .stack { max-width: 84%; }
+  .tile b {
     display: block; font-size: 14px; font-weight: 500; letter-spacing: .02em;
     text-transform: none; text-align: center;
     color: hsl(var(--h) 30% 84%); opacity: .85;
@@ -206,8 +208,8 @@ _PAGE = """<!doctype html>
   }
   /* the site's own mark, if it keeps one where every site keeps it. it fails
      to load about as often as not, and failing quietly is the whole design */
-  .mark img { width: 28px; height: 28px; object-fit: contain; margin-bottom: 8px; }
-  .mark .stack { display: grid; place-items: center; }
+  .tile img { width: 28px; height: 28px; object-fit: contain; margin-bottom: 8px; }
+  .tile .stack { display: grid; place-items: center; }
   .body { display: flex; flex-direction: column; gap: 8px; padding: 14px 15px 15px; flex: 1; }
   /* the title is what opens the note, so it is the button and the card is a
      plain container: a button holding other buttons is read out as one thing */
@@ -362,7 +364,7 @@ function frame(it) {
          onerror="this.remove()">`
     : "";
   const mark = said
-    ? `<div class="mark"><div class="stack"
+    ? `<div class="tile"><div class="stack"
          ><img src="https://${esc(domain)}/favicon.ico" alt="" loading="lazy"
             onerror="this.remove()"><b>${esc(said)}</b></div></div>`
     : "";

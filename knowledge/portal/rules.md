@@ -57,6 +57,21 @@ for free: `graph()` is handed the already-filtered results, so picking a tag
 drops every big tag that does not keep company with it and the next fourteen
 are drawn from what is left. There is no separate "show the neighbours" path.
 
+**R7.5.** Fourteen is what a laptop holds, not what a phone holds. The server
+still sends fourteen; the page draws `holds()` of them — one per 13000 square
+pixels of box, floor of six — and the tail it drops is the smallest tags, never
+a picked one. Everything else about the drawing is a share of `unit`, the room
+one bubble has (`sqrt(area / count)`): the radii, the type size, the thread
+lengths, where a new bubble is born. Nothing is a pixel constant, because a
+layout tuned at one width is a mess at every other one, and a resize lays the
+last answer out again rather than stretching what is on screen.
+
+**R7.6.** The web is put in the middle as one thing, not bubble by bubble. The
+spring pulling every bubble at the centre had its x component multiplied by the
+box aspect, which on a laptop strip came to a fifth of the y one and let the
+whole web drift out to both edges. A weak spring plus one eased translation of
+the whole set per step keeps it centred at any shape of box.
+
 **R7.2.** Nothing on the web drifts by itself. Each bubble used to carry a
 sine-wave wobble, which meant a `requestAnimationFrame` loop that never ended,
 hit-testing against a moving target, and a picture that would not hold still
@@ -80,9 +95,13 @@ search around one either. They stay on the note and in the panel — they are
 context, just not a way in. Both counts go through `portal._ranked()`, which is
 the only place the list is applied.
 
-**R7.3.** The gap that keeps two bubbles apart is `r + r + 34`, not
-`r + r + 10`. The label hangs under the bubble and is wider than it is, so
-circles that merely fail to touch still have their words running together.
+**R7.3.** What has to stay apart is not two circles. The label hangs under the
+bubble and is usually wider than it, so a bubble is a rectangle: the measured
+width of its text and a line of type below the circle. A pair whose boxes
+overlap gives way along whichever axis is nearer to free — pushing along the
+line of centres is what let `running` and `hiking` slide into one word. The
+sides of the box hold in the text too: holding the centre of the circle inside
+was cutting `accessories` and `home-deco` off at the edge.
 
 **R8.** The web is drawn on a canvas, and that is a security decision as much
 as a performance one. Tag strings are written by a model reading arbitrary web
@@ -147,6 +166,15 @@ while it is open, and closing hands focus back to whatever opened it, or to the
 search box when that card is gone. Picking a tag from inside the panel lands on
 that tag's crumb instead: the card underneath is about to be replaced by the
 answer.
+
+**R15.1.** The whole page is one stylesheet in one string, so a class name used
+twice is a silent bug. `.mark` was the header wordmark; a second `.mark` written
+later for the tile a pictureless card gets carried `position: absolute;
+inset: 0`, won on order, and turned the words "cool stuff" into an invisible box
+the width of the header sitting on top of the profile link. Nothing looked
+wrong — the link simply stopped taking clicks. The tile is `.tile` now, and
+`test_web.py` counts every class declared at the top level of the sheet and
+fails on a repeat.
 
 **R12.** The page is assembled by `str.replace` over a template full of
 javascript braces, so a placeholder that nobody filled in ships as the literal
