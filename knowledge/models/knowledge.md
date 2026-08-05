@@ -44,6 +44,13 @@ our bug, not the model's — see models R5.
   12000 tok/min, `openai/gpt-oss-120b` 1000/day and 8000 tok/min,
   `llama-3.1-8b-instant` 14400/day and 6000 tok/min. Fastest of everything
   tested, including the paid models.
+- **Groq's real ceiling is tokens per day, not requests** (2026-08-05). The
+  headers advertise 1000 req/day and 12000 tok/min; what actually stops the work
+  is `on_demand` **100000 tokens per day** on `llama-3.3-70b-versatile`. The
+  retag of 895 notes at roughly 1.6k tokens each spent it inside the first
+  sixty-odd notes, and every one after that was served by Gemini — with no sign
+  of it anywhere until `llm.call` started logging who answered (R9). A
+  vault-wide job is a Gemini job whether or not the chain says so.
 - **`llama-3.1-8b-instant` cannot be used despite its 14400/day.** Asked for an
   English query it returns «теплое зимнее». It does not translate.
 - **`qwen/qwen3.6-27b` on Groq cannot be used** either: HTTP 400
