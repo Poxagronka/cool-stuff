@@ -119,6 +119,10 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   made it unreadable. It does drift, on purpose: the search ends in a couple of
   seconds and then the layout crawls at a pixel a frame, for ever
   → same file, R7.1–R7.3, R7.10
+- The web as it looks when it is right, with every number and what each one
+  replaced: `fcfcde7`, written down in
+  [knowledge/portal/knowledge.md](knowledge/portal/knowledge.md). Restore
+  `graph.py` from there rather than tuning it again
 - Fourteen is what a laptop holds. Every length in the web is a share of the
   room one bubble has, and a bubble is a rectangle the width of its label —
   circles that clear each other still had their words running together
@@ -162,6 +166,9 @@ Details in `research/` and `PLAN.md`, the state of the environment in
   keywords → [knowledge/models/rules.md](knowledge/models/rules.md) R5
 - A provider that answers with anything but a well-formed tool call counts as
   unavailable and the chain moves on → same file, R2
+- A tag is a shelf, not a description: a model tagging one note at a time
+  writes `athens-radio` and `online-software`, so it is shown the tags the
+  vault already uses and the broad word is asked for by position → same file, R9
 - A tool payload is checked against the declared schema first: `{"keep":
   "false"}` is truthy and would publish a private link → same file, R7
 - Anything built out of the vault goes in the user turn as data, never in the

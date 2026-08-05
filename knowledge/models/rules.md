@@ -50,3 +50,24 @@ from tags a model wrote while reading arbitrary web pages, and untrusted text
 in a system block is the model being told to obey it. On Anthropic the hint and
 the question share one user turn, because that api wants the roles to
 alternate. Same reasoning as portal R6, one layer down.
+
+**R9.** A model asked for tags writes descriptions of the one link in front of
+it, not shelves the collection can stand on, and every failure of that is a tag
+holding a single note for ever:
+
+- A place or a brand glued to the kind. `athens-radio` gathers nothing;
+  `radio` plus `athens` are two shelves that do.
+- The same thing said twice. `radio` and `online-radio` on one note.
+- Plural against singular. `piano-tutorial` and `piano-tutorials` are two
+  shelves holding the same thing, so the trailing `s` is folded in code — only
+  where a word is left, or `css` and `bass` become plurals of nothing.
+- No broad word at all. Asking for "up to 6 tags" got a radio station
+  `athens-radio`, `online-radio`, `experimental-music` — three tags, no
+  `music`, filed under nothing. The broad word is asked for by position: the
+  first tag is the plain one.
+
+And tagging note by note is what makes them: three neighbouring links came back
+`web-app`, `browser-based` and `online-software`. The tags the collection
+already uses go in the same turn as the note, most-used first, with the
+instruction that any of them which fits belongs in the answer. That is the
+whole difference between ten tags and ten shelves.

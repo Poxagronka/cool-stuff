@@ -186,8 +186,8 @@ def cleaned(tags: list[str], had: list[str]) -> list[str]:
     return out[: categorize.TAGS]
 
 
-async def ask(front: dict, known: list[str]) -> list[str]:
-    data, _ = await llm.call(
+async def ask(front: dict, known: list[str]) -> tuple[list[str], str]:
+    data, step = await llm.call(
         llm.chain(categorize.CHAIN), SYSTEM, question(front, known), TOOL,
         max_tokens=400, timeout=90, retries=2,
     )
@@ -195,7 +195,7 @@ async def ask(front: dict, known: list[str]) -> list[str]:
     # a tag the model dropped it was told to keep is a rule call, so the kept
     # ones are whatever came back that the note already had, in its order
     had = [t for t in listed(front.get("tags")) if t in answered]
-    return cleaned(answered, had)
+    return cleaned(answered, had), str(step)
 
 
 def put_in_note(path: Path, text: str, tags: list[str]) -> bool:
@@ -228,6 +228,13 @@ def put_in_db(conn: sqlite3.Connection, url: str, tags: list[str]) -> bool:
     return True
 
 
+def tally() -> None:
+    """Who did the work, so the bill is not a surprise."""
+    total = sum(llm.SERVED.values()) or 1
+    for mark, count in sorted(llm.SERVED.items(), key=lambda kv: -kv[1]):
+        print(f"  {count:>5}  {count * 100 // total:>3}%  {mark}")
+
+
 async def main() -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry", action="store_true", help="say what it would write")
@@ -251,15 +258,19 @@ async def main() -> int:
     async def one(path: Path, front: dict) -> tuple[Path, list[str]]:
         async with gate:
             try:
-                tags = await ask(front, known)
+                tags, who = await ask(front, known)
             except llm.Unavailable as err:
                 print(f"  ....  {path.name}: {err}"[:160], flush=True)
                 return path, []
-            print(f"  {len(tags):>2}    {path.name}: {', '.join(tags)}"[:200], flush=True)
+            # which provider answered, per note: the chain is only worth having
+            # if the free end of it is doing the work
+            said = ", ".join(tags)
+            print(f"  {len(tags):>2} {who.ljust(38)} {path.name}: {said}"[:220], flush=True)
             return path, tags
 
     got = await asyncio.gather(*(one(p, f) for p, f in notes))
     if args.dry:
+        tally()
         return 0
 
     conn = db.connect(DB_PATH)
@@ -276,6 +287,7 @@ async def main() -> int:
             rows += put_in_db(conn, str(front_of(text).get("url", "")), tags)
     conn.commit()
     print(f"wrote {wrote} notes, {rows} rows")
+    tally()
     return 0
 
 

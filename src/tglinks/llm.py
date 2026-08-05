@@ -40,6 +40,14 @@ class Unavailable(Exception):
     """This provider did not deliver; the next one in the chain should try."""
 
 
+# how many calls each provider has served since this process started, keyed
+# "provider/model tool". the point of a chain is that the free providers do the
+# work and the paid one is the fallback, and nothing said whether that was
+# still true: every answer looks the same from the outside. counted here rather
+# than in the callers because every call goes through this module
+SERVED: dict[str, int] = {}
+
+
 @dataclass(frozen=True)
 class Step:
     """One provider and the model to ask for, as written in a chain string."""
@@ -272,11 +280,18 @@ async def call(steps: list[Step], system: str, user: str, tool: Tool,
             delay = 1.0
             for attempt in range(retries):
                 try:
-                    return await once(client, step, system, hint, user, tool, max_tokens), step
+                    data = await once(client, step, system, hint, user, tool, max_tokens)
                 except Unavailable as err:
                     trouble.append(f"{step}: {err}")
                     if attempt + 1 < retries:
                         await asyncio.sleep(delay)
                         delay *= 2
+                    continue
+                mark = f"{step} {tool.name}"
+                SERVED[mark] = SERVED.get(mark, 0) + 1
+                # one line per call, so `fly logs | grep 'llm served'` says who
+                # is doing the work and how much of it the fallback took
+                log.info("llm served: %s, %d since boot", mark, SERVED[mark])
+                return data, step
             log.info("provider fell through: %s", trouble[-1])
     raise Unavailable("; ".join(trouble))

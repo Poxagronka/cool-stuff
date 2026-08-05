@@ -65,6 +65,29 @@ def test_a_string_where_the_tool_wants_a_boolean_is_not_a_verdict(serve):
     assert data["keep"] is False
 
 
+def test_who_answered_is_counted_and_logged(serve, caplog):
+    """A free chain with a paid fallback says nothing about which one paid.
+
+    Every answer looks the same from the outside, so the count of calls each
+    provider served is kept and each one is logged: on the machine that is
+    `fly logs | grep 'llm served'` and nothing else needed.
+    """
+    llm.SERVED.clear()
+    serve(by_host({
+        "groq": tool_call("classify", "{}"),
+        "cerebras": tool_call("classify", json.dumps({
+            "category": "place", "tags": [], "title": "MACRO",
+            "description": "A museum.", "keywords": [], "confidence": "high",
+        })),
+    }))
+    with caplog.at_level("INFO", logger="tglinks"):
+        ask(CHAIN, categorize.TOOL)
+    assert llm.SERVED == {"cerebras/b classify": 1}
+    assert "llm served: cerebras/b classify, 1 since boot" in caplog.text
+    # and the one that failed to answer is not counted as having answered
+    assert not any(mark.startswith("groq") for mark in llm.SERVED)
+
+
 def test_an_empty_object_is_not_a_classification(serve):
     serve(by_host({
         "groq": tool_call("classify", "{}"),
