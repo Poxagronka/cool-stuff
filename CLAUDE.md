@@ -82,6 +82,9 @@ Details in `research/` and `PLAN.md`, the state of the environment in
 - Fly health checks keep the machine awake, so there are none → same file, R5
 - And `suspend` stays over `stop`: 0.65s to resume against 9.1s to boot cold →
   same file, R14. The memory is measured, not guessed → same file, R15
+- An open ssh session is not traffic: a long job on the machine is suspended
+  under you, resumes intact when something wakes it, and needs a `/health` poke
+  beside it to finish → same file, R12
 - And therefore no timer in the app either: a frozen process has no clock, so
   the periodic work hangs off the wakes and the cron lives on the Fly side →
   same file, R12

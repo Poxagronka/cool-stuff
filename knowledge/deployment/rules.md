@@ -80,6 +80,14 @@ The corollary is that a long job can be suspended halfway through. It is not a
 crash to be prevented, it is normal operation, and the job has to be written to
 resume — see telegram R13.
 
+An open `flyctl ssh console` does not count as traffic, so a job run that way is
+suspended under you too: the 895-note retag froze at note 582 and `fly status`
+said `suspended` while the log sat still. Nothing was lost — suspend is a
+freeze, and the process carried on from note 583 the moment a request woke the
+machine — but it will not finish unless something keeps poking it. A `curl
+/health` every 25 seconds alongside the run is enough, and `/health` is on the
+open list so the poke carries no credentials.
+
 **R13.** Carrying the laptop's vault onto the volume is not a copy, it is a
 merge between two filesystems that disagree, and both disagreements produce
 duplicate notes on the site.
