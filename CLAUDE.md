@@ -88,6 +88,10 @@ Details in `research/` and `PLAN.md`, the state of the environment in
 - And therefore no timer in the app either: a frozen process has no clock, so
   the periodic work hangs off the wakes and the cron lives on the Fly side →
   same file, R12
+- The saved pull is late on purpose — no hourly poke machine exists, so it
+  rides the wakes and lags by hours or days. "Saved links stopped" was a stale
+  `git pull` on the laptop, not the server →
+  [knowledge/deployment/rules.md](knowledge/deployment/rules.md) R16
 - The saved-messages session cannot be created on the server, and a login that
   is gone reads an empty history exactly like a healthy run does →
   [knowledge/telegram/rules.md](knowledge/telegram/rules.md) R12

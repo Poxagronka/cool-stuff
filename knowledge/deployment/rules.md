@@ -123,3 +123,30 @@ on top of that. So 256 MB, not 512: the ceiling is paid for twice, once while
 awake and once in the suspend snapshot. Fly takes memory in multiples of 256,
 so there is no middle setting — if an OOM ever shows up in the logs the only
 step up is back to 512.
+
+**R16.** The saved-messages pull is late by design and that is accepted. There
+is no scheduled machine poking `/health` on this app — R12 describes one as the
+option for a guaranteed clock, and it was deliberately not created. The pull
+therefore rides whatever wakes the machine anyway: a link in the group, someone
+opening the site, a fly-side reboot. Measured over 2026-08-05..17, a saved link
+reached its note between the same minute and two days later, and one stretch of
+nine quiet days passed with no attempt at all (`saved_ran_at` sat on 08-05 while
+links from 08-06 waited). Nothing is lost while it waits — the watermark and the
+`status = 'new'` requery (telegram R13) hold the work — so the owner's call on
+2026-08-17 was to leave it: hours or days of lag on a personal link collection
+is not worth an hourly machine.
+
+The consequence is a diagnosis trap. "Saved links stopped being parsed" was
+neither a pull failure nor a triage one: the pipeline was fine and the notes
+were on `origin/main`, but the laptop's `~/links-vault` clone was 25 commits
+behind, so obsidian showed nothing newer than the last `git pull`. Check the
+remote's log before touching anything on the server.
+
+Two things make the server's own state easy to misread while checking. A
+`flyctl ssh sftp get /data/links.db` alone shows a database frozen at the last
+checkpoint — everything since lives in `links.db-wal`, so pull that too and
+leave `-shm` behind (R11). And the decisive test for "was a link dropped" is
+telethon against Saved Messages compared with `SELECT msg_id FROM message WHERE
+private = 1` — beware that this shares the one login (telegram R12); connecting
+read-only from the laptop while the server holds the same session did not throw
+either side off, but it is a coin toss worth avoiding when the logs would do.
