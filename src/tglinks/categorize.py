@@ -12,7 +12,7 @@ from .config import CATEGORIES
 
 CHAIN = os.getenv(
     "SORT_CHAIN",
-    "groq/llama-3.3-70b-versatile,gemini/gemini-3.5-flash-lite,"
+    "groq/openai/gpt-oss-120b,gemini/gemini-3.5-flash-lite,"
     "anthropic/claude-sonnet-5",
 )
 

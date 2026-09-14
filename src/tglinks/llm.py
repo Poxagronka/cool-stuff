@@ -72,7 +72,7 @@ class Step:
 
 
 def chain(spec: str) -> list[Step]:
-    """"groq/llama-3.3-70b-versatile, anthropic/claude-sonnet-5" into steps."""
+    """"groq/openai/gpt-oss-120b, anthropic/claude-sonnet-5" into steps."""
     steps = []
     for part in spec.split(","):
         provider, _, model = part.strip().partition("/")
