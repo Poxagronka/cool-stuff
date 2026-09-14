@@ -21,7 +21,7 @@ HAS_URL = re.compile(r"(https?://|www\.)\S+", re.I)
 # anthropic catches whatever it cannot, because no verdict means no note
 TRIAGE_CHAIN = os.getenv(
     "TRIAGE_CHAIN",
-    "groq/llama-3.3-70b-versatile,gemini/gemini-3.5-flash-lite,"
+    "groq/openai/gpt-oss-120b,gemini/gemini-3.5-flash-lite,"
     "anthropic/claude-haiku-4-5-20251001",
 )
 

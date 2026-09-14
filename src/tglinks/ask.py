@@ -16,10 +16,10 @@ from .config import CATEGORIES
 
 # measured on fourteen real questions in three languages against the real
 # vault: llama and gpt-oss put the right note in the top five twelve times,
-# haiku thirteen. the free two go first and haiku catches the rest
+# haiku thirteen. groq retired llama, so gpt-oss goes first and haiku catches the rest
 CHAIN = os.getenv(
     "SEARCH_CHAIN",
-    "groq/llama-3.3-70b-versatile,groq/openai/gpt-oss-120b,"
+    "groq/openai/gpt-oss-120b,"
     "anthropic/claude-haiku-4-5-20251001",
 )
 

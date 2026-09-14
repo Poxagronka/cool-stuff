@@ -66,9 +66,15 @@ our bug, not the model's — see models R5.
 
 ## The chains this produced
 
-- `SEARCH_CHAIN`: groq llama-3.3-70b → groq gpt-oss-120b → anthropic haiku
-- `SORT_CHAIN`: groq llama-3.3-70b → gemini 3.5-flash-lite → anthropic sonnet
-- `TRIAGE_CHAIN`: groq llama-3.3-70b → gemini 3.5-flash-lite → anthropic haiku
+- `SEARCH_CHAIN`: groq gpt-oss-120b → anthropic haiku
+- `SORT_CHAIN`: groq gpt-oss-120b → gemini 3.5-flash-lite → anthropic sonnet
+- `TRIAGE_CHAIN`: groq gpt-oss-120b → gemini 3.5-flash-lite → anthropic haiku
+
+Groq retired `llama-3.3-70b-versatile` (2026-09-14): it answers HTTP 404 "does
+not exist or you do not have access to it", and it is gone from Groq's
+`/openai/v1/models` list, where `openai/gpt-oss-120b` is still active. Every
+chain had it first, so every call paid a 404 before falling through. It was
+replaced by `gpt-oss-120b`, which scored 45/48 against llama's 46/48 above.
 
 At roughly 400 links and a few hundred questions a month the whole thing runs
 inside the free allowances, and Anthropic is only reached on a bad day.
